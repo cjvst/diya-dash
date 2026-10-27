@@ -1,6 +1,6 @@
 // Offline support for promoters on patchy networks.
 // Code and page: network first, falling back to the saved copy. Images, sound, the 3D engine and fonts: saved copy first.
-const VERSION = 'diya-dash-v3';
+const VERSION = 'diya-dash-v4';
 const CORE = [
   './', 'index.html', 'manifest.webmanifest',
   'src/main.js', 'src/rules.js', 'src/textures.js', 'src/world.js', 'src/diyas.js', 'src/fx.js', 'src/triangle.js', 'src/player.js', 'src/audio.js', 'src/i18n.js',
@@ -40,7 +40,9 @@ self.addEventListener('fetch', e => {
   e.respondWith((async () => {
     const cache = await caches.open(VERSION);
     if (fresh) {
-      try { const res = await fetch(req); if (res.ok) cache.put(req, res.clone()); return res; }
+      // revalidate with the server (a cheap 304 when nothing changed), so after an update no phone runs a mix
+      // of new and old code files from the browser's own cache
+      try { const res = await fetch(req, { cache: 'no-cache' }); if (res.ok) cache.put(req, res.clone()); return res; }
       catch (err) { const hit = await cache.match(req, { ignoreSearch: true }); if (hit) return hit; throw err; }
     }
     const hit = await cache.match(req, { ignoreSearch: true });
