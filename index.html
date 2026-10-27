@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#07060f">
+<!-- a link for the promoter team, not a public page: keep it out of search engines -->
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Diya Dash</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/brand/total-triangle.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Outfit:wght@400;600;800&family=Yatra+One&display=swap">
+<style>
+/* One phone-shaped stage: the 3D gali on a canvas, quiet screens over it. */
+:root {
+  --ink: #07060f; --gold: #ffcf5a; --gold-deep: #e39a1f; --cream: #fff4d6; --muted: rgba(255, 244, 214, .66);
+  --red: #c4161c; --blue: #2f7cff;
+  --f-body: "Outfit", system-ui, sans-serif;
+  --f-num: "Michroma", "Outfit", sans-serif;
+  --f-fest: "Yatra One", Georgia, serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--ink); color: var(--cream); overflow: hidden; overscroll-behavior: none; }
+body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+#app { position: relative; margin: 0 auto; width: 100%; max-width: 520px; height: 100%; overflow: hidden; touch-action: none; background: var(--ink); }
+#c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+/* z-index gives each screen its own stacking context, so its ::before backdrop sits above the 3D canvas */
+.screen { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 56px) max(20px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 30px) max(20px, env(safe-area-inset-left, 0px));
+  opacity: 0; visibility: hidden; transition: opacity .22s ease, visibility 0s linear .22s; pointer-events: none; }
+.screen.on { opacity: 1; visibility: visible; transition: opacity .45s ease; pointer-events: auto; }
+
+.cta { position: relative; overflow: hidden; border: 0; cursor: pointer; pointer-events: auto;
+  font: 800 21px/1 var(--f-body); letter-spacing: .04em; color: #2a1200; padding: 20px 52px; border-radius: 999px; min-width: 230px;
+  background: linear-gradient(180deg, #fff3c0 0%, var(--gold) 42%, var(--gold-deep) 100%);
+  box-shadow: 0 0 0 2px rgba(255, 240, 190, .55) inset, 0 12px 30px rgba(255, 150, 30, .35), 0 0 48px rgba(255, 180, 60, .25);
+  transition: transform .12s ease; }
+.cta::after { content: ""; position: absolute; top: -30%; bottom: -30%; width: 34%; left: -60%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .7), transparent); transform: skewX(-20deg); animation: shine 3.2s ease-in-out infinite 1.2s; }
+@keyframes shine { 0% { left: -60%; } 50%, 100% { left: 130%; } }
+.cta:active { transform: scale(.95); }
+.cta:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
+
+/* brand lockup: official triangle + wordmark */
+.lockup { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.lockup .tri { width: 54px; height: auto; filter: drop-shadow(0 4px 12px rgba(47, 124, 255, .45)); }
+.lockup .word { width: 150px; height: auto; filter: invert(1) brightness(2) drop-shadow(0 2px 8px rgba(0, 0, 0, .6)); }
+
+/* landing */
+#landing { justify-content: space-between; }
+/* dark bands top and bottom so the gold title and the call to action hold against the bright dusk sky and street */
+#landing::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(10, 8, 24, .9) 0%, rgba(10, 8, 24, .72) 20%, rgba(10, 8, 24, .0) 40%, rgba(10, 8, 24, .0) 56%, rgba(10, 8, 24, .78) 76%, rgba(10, 8, 24, .94) 100%); }
+.fest { font-family: var(--f-fest); font-size: clamp(44px, 13.5vw, 64px); line-height: 1.05; margin-top: 18px; text-wrap: balance;
+  background: linear-gradient(180deg, #fff8d6 0%, var(--gold) 46%, #c77d16 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 3px 14px rgba(255, 150, 40, .45)); }
+.landing-foot { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.tag { margin: 0; font-size: 19px; font-weight: 600; text-wrap: balance; max-width: 330px; text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
+.secs { margin: 0 0 8px; font-size: 17px; font-weight: 800; letter-spacing: .12em; color: var(--gold); text-transform: uppercase; text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
+
+/* HUD */
+#hud { position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0; transition: opacity .4s ease; }
+#hud.on { opacity: 1; }
+/* Everything you read during play sits on a solid dark backing, so it holds up in daylight glare. */
+.hud-bar { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 62px; right: 120px; height: 42px; display: flex; align-items: center; gap: 10px;
+  padding: 0 14px 0 12px; border-radius: 999px; background: rgba(10, 8, 24, .72); border: 1px solid rgba(255, 207, 90, .3); }
+.secs-left { font: 800 19px/1 var(--f-body); color: #fff; min-width: 2.2ch; font-variant-numeric: tabular-nums; }
+.secs-left.low { color: #ff8a5a; }
+.timer { position: relative; flex: 1; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .18); overflow: hidden; }
+.timer i { position: absolute; inset: 0; background: linear-gradient(90deg, var(--gold-deep), var(--gold)); transform-origin: left; }
+.timer.low i { background: linear-gradient(90deg, #ff4a2a, #ff9a4a); }
+.score { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 10px); right: max(12px, env(safe-area-inset-right, 0px)); height: 42px; display: flex; align-items: center; gap: 8px;
+  padding: 0 14px 0 8px; border-radius: 999px; background: rgba(10, 8, 24, .72); border: 1px solid rgba(255, 207, 90, .3); }
+.score img { width: 32px; height: auto; }
+.score b { font: 800 24px/1 var(--f-body); color: #fff; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
+.score b.bump { animation: bump .28s ease-out; }
+@keyframes bump { 30% { transform: scale(1.3); color: var(--gold); } }
+.badge { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 800 24px/1 var(--f-body); color: var(--gold);
+  padding: 10px 20px; border-radius: 999px; background: rgba(10, 8, 24, .78); border: 1.5px solid rgba(255, 207, 90, .7); box-shadow: 0 0 24px rgba(255, 160, 40, .35); opacity: 0; }
+.badge.on { animation: badge 1.3s ease-out forwards; }
+@keyframes badge { 0% { opacity: 0; transform: translateX(-50%) scale(.7); } 15% { opacity: 1; transform: translateX(-50%) scale(1.08); } 30% { transform: translateX(-50%) scale(1); } 78% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) translateY(-12px); } }
+.count { position: absolute; top: 30%; left: 0; right: 0; text-align: center; font: 800 128px/1 var(--f-body); color: #fff; opacity: 0;
+  -webkit-text-stroke: 3px rgba(20, 10, 30, .85); paint-order: stroke fill; text-shadow: 0 6px 24px rgba(0, 0, 0, .55), 0 0 40px rgba(255, 170, 60, .55); }
+.count.pop { animation: pop .75s ease-out forwards; }
+.count.go { font-size: 68px; color: var(--gold); }
+/* the last five seconds sit over the sky triangle, which is gold by then: white on a dark halo reads on it */
+.count.late { top: 13%; font-size: 92px; color: #fff; -webkit-text-stroke: 4px rgba(20, 10, 30, .9);
+  text-shadow: 0 0 22px rgba(10, 5, 25, .95), 0 0 6px rgba(10, 5, 25, .9), 0 6px 24px rgba(0, 0, 0, .6); }
+@keyframes pop { 0% { opacity: 0; transform: scale(1.6); } 18% { opacity: 1; transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: scale(.92); } }
+.hint { position: absolute; bottom: calc(env(safe-area-inset-bottom, 0px) + 9%); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; transition: opacity .4s ease; }
+.hint.on { opacity: 1; }
+.hint svg { width: 64px; height: 64px; animation: swipe 1.6s ease-in-out infinite; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .7)); }
+.hint span { font-weight: 800; font-size: 17px; padding: 8px 18px; border-radius: 999px; background: rgba(10, 8, 24, .75); }
+@keyframes swipe { 0%, 100% { transform: translateX(-38px); } 50% { transform: translateX(38px); } }
+
+/* result: the 3D triangle stays clear in the top of the screen; everything to read sits on a solid panel below */
+#result { justify-content: flex-end; padding: 0; }
+.res-panel { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 18px max(18px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 20px) max(18px, env(safe-area-inset-left, 0px));
+  border-radius: 28px 28px 0 0; border-top: 1px solid rgba(255, 207, 90, .4);
+  background: linear-gradient(180deg, rgba(14, 10, 30, .9) 0%, rgba(8, 6, 18, .97) 40%, #07060f 100%);
+  box-shadow: 0 -18px 50px rgba(0, 0, 0, .55);
+  transform: translateY(24px); opacity: 0; transition: transform .6s cubic-bezier(.2, .9, .3, 1), opacity .45s ease; }
+#result.on .res-panel { transform: none; opacity: 1; }
+.res-score { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.res-tri { width: 62px; height: auto; filter: drop-shadow(0 4px 14px rgba(47, 124, 255, .55)); }
+.res-label { font-size: 14px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; color: var(--gold); text-align: left; }
+.res-num { font: 800 clamp(64px, 19vw, 84px)/.95 var(--f-body); color: #fff; text-align: left; font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .5), 0 0 28px rgba(255, 170, 60, .4); will-change: transform; }
+.card { width: 100%; max-width: 360px; padding: 18px 18px 16px; border-radius: 22px; position: relative;
+  background: radial-gradient(120% 100% at 50% 0%, #d8222a 0%, var(--red) 38%, #6a0a16 100%); border: 1.5px solid rgba(255, 220, 140, .8);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .6), 0 0 60px rgba(255, 120, 40, .25); opacity: 0; transform: translateY(16px) scale(.97); transition: opacity .6s ease, transform .7s cubic-bezier(.2, 1.2, .3, 1); }
+#result.reveal .card { opacity: 1; transform: none; }
+#result.lose .card { background: radial-gradient(120% 100% at 50% 0%, #1d3f86 0%, #0e2456 55%, #08142f 100%); border-color: rgba(140, 190, 255, .6); }
+.card .lockup .tri { width: 54px; }
+.card .lockup .word { width: 120px; }
+.card .fest { margin-top: 4px; font-size: clamp(40px, 12vw, 52px); filter: drop-shadow(0 2px 0 rgba(70, 0, 10, .9)) drop-shadow(0 3px 12px rgba(0, 0, 0, .35)); }
+.card .kick { margin-top: 4px; font-size: 14px; font-weight: 800; letter-spacing: .24em; text-transform: uppercase; color: #ffe7a6; }
+.card .kick:empty { display: none; }
+.card .prize { font: 800 clamp(34px, 10.5vw, 44px)/1.1 var(--f-body); color: #fff; margin: 4px 0 2px; text-shadow: 0 3px 0 rgba(60, 0, 10, .65); }
+.card .line { font-size: 15px; font-weight: 600; color: var(--cream); min-height: 1em; }
+.res-actions { display: flex; flex-direction: column; align-items: center; gap: 10px; opacity: 0; transition: opacity .5s ease .9s; }
+#result.reveal .res-actions { opacity: 1; }
+.collect { font-size: 15px; font-weight: 600; color: rgba(255, 244, 214, .85); min-height: 1em; }
+
+#paused { justify-content: center; gap: 22px; background: rgba(7, 6, 15, .65); }
+#paused h2 { margin: 0; font: 400 20px var(--f-num); letter-spacing: .2em; color: var(--gold); }
+#loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; background: var(--ink); z-index: 40; transition: opacity .6s ease; }
+#loading.gone { opacity: 0; pointer-events: none; }
+#loading img { width: 92px; animation: breathe 1.8s ease-in-out infinite; }
+@keyframes breathe { 50% { transform: scale(1.06); filter: drop-shadow(0 0 18px rgba(47, 124, 255, .6)); } }
+.bar { width: 180px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--gold); transform-origin: left; transform: scaleX(0); transition: transform .3s ease; }
+#loadMsg { font-size: 14px; color: var(--muted); }
+#mute { position: absolute; z-index: 30; top: calc(env(safe-area-inset-top, 0px) + 10px); left: max(12px, env(safe-area-inset-left, 0px)); width: 42px; height: 42px; border-radius: 50%;
+  border: 1px solid rgba(255, 215, 140, .3); background: rgba(10, 8, 24, .5); color: var(--gold); display: grid; place-items: center; cursor: pointer; }
+#mute svg { width: 20px; height: 20px; } #mute .off { display: none; } #mute.muted .on { display: none; } #mute.muted .off { display: block; }
+#rotate { position: absolute; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; padding: 30px; text-align: center; background: var(--ink); font-size: 18px; font-weight: 600; }
+@media (orientation: landscape) and (max-height: 500px) { #rotate { display: flex; } }
+#dbg { position: absolute; left: 8px; bottom: 8px; z-index: 60; font: 11px/1.35 ui-monospace, monospace; color: #9f9; background: rgba(0, 0, 0, .6); padding: 4px 6px; border-radius: 6px; white-space: pre; pointer-events: none; }
+/* short phones: the 3D scene above already shows the TOTAL triangle and wordmark, so the card drops its copy */
+@media (max-height: 740px) { .card { padding: 12px 14px; } .card .lockup { display: none; } .card .fest { font-size: 40px; margin-top: 0; } .res-num { font-size: 60px; } .res-tri { width: 50px; } .res-panel { gap: 10px; } .cta { padding: 16px 44px; } }
+@media (prefers-reduced-motion: reduce) { .cta::after, .hint svg, #loading img { animation: none !important; } }
+</style>
+<script type="importmap">{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+
+  <section class="screen on" id="landing" aria-label="Diya Dash">
+    <div>
+      <div class="lockup"><img class="tri" src="assets/brand/total-triangle.png" alt=""><img class="word" src="assets/brand/total-wordmark.png" alt="TOTAL"></div>
+      <div class="fest" data-t="greet">Happy Diwali</div>
+    </div>
+    <div class="landing-foot">
+      <p class="tag" data-t="tagline">Light the diyas and win exciting gifts</p>
+      <p class="secs" data-t="seconds">You have 30 seconds!</p>
+      <button class="cta" id="btnGo" data-t="go">Let's GO!</button>
+    </div>
+  </section>
+
+  <div id="hud" aria-hidden="true">
+    <div class="hud-bar"><b class="secs-left" id="secsLeft">30</b><div class="timer" id="timer"><i id="timerFill"></i></div></div>
+    <div class="score"><img src="assets/brand/total-triangle.png" alt=""><b id="score">0</b></div>
+    <div class="badge" id="badge"></div>
+    <div class="count" id="count"></div>
+    <div class="hint" id="hint">
+      <svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><circle cx="32" cy="30" r="13" fill="rgba(255,207,90,.25)"/><path d="M28 50V30a4 4 0 0 1 8 0v8l7 2a4 4 0 0 1 3 4.5L44 54H30z" fill="#fff4d6" stroke="#2a1200" stroke-width="2" stroke-linejoin="round"/></svg>
+      <span data-t="hint">Drag to move your flame</span>
+    </div>
+  </div>
+
+  <section class="screen" id="paused" aria-label="Paused">
+    <h2 data-t="paused">Paused</h2>
+    <button class="cta" id="btnResume" data-t="resume">Resume</button>
+  </section>
+
+  <section class="screen" id="result" aria-label="Result">
+    <div class="res-panel">
+      <div class="res-score">
+        <img class="res-tri" src="assets/brand/total-triangle.png" alt="">
+        <div><div class="res-label" data-t="lit">Triangles lit</div><div class="res-num" id="resNum">0</div></div>
+      </div>
+      <div class="card">
+        <div class="lockup"><img class="tri" src="assets/brand/total-triangle.png" alt=""><img class="word" src="assets/brand/total-wordmark.png" alt="TOTAL"></div>
+        <div class="fest" data-t="greet">Happy Diwali</div>
+        <div class="kick" id="pKick"></div>
+        <div class="prize" id="pTitle"></div>
+        <div class="line" id="pLine"></div>
+      </div>
+      <div class="res-actions">
+        <div class="collect" id="collect"></div>
+        <button class="cta" id="btnNext" data-t="next">Next player</button>
+      </div>
+    </div>
+  </section>
+
+  <button id="mute" aria-label="Sound on or off">
+    <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+    <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M17 9l5 6M22 9l-5 6"/></svg>
+  </button>
+
+  <div id="loading"><img src="assets/brand/total-triangle.png" alt=""><div class="bar"><i id="loadBar"></i></div><div id="loadMsg" data-t="loading">Lighting the gali</div></div>
+  <div id="rotate" data-t="rotate">Turn your phone upright to play</div>
+  <div id="dbg" hidden></div>
+</div>
+<script>
+  // timer bar and debug toggle live outside the module so they never block the first paint
+  if (/[?&]debug\b/.test(location.search)) document.getElementById('dbg').hidden = false;
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

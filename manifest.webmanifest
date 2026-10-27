@@ -1,0 +1,10 @@
+{
+  "name": "Diya Dash",
+  "short_name": "Diya Dash",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#07060f",
+  "theme_color": "#07060f",
+  "icons": [{ "src": "assets/brand/total-triangle.png", "sizes": "208x123", "type": "image/png" }]
+}

@@ -1,0 +1,130 @@
+// Sparks, fireworks and the streaks of light that fly from each diya to the TOTAL triangle.
+// One pool of point sprites, one draw call.
+import * as THREE from 'three';
+
+const CAP = 2400;
+const PALETTES = [
+  [[1.0, 0.78, 0.35], [1.0, 0.95, 0.8]],                 // gold and white
+  [[1.0, 0.25, 0.18], [1.0, 0.7, 0.3]],                   // red and amber
+  [[0.25, 0.55, 1.0], [0.85, 0.95, 1.0]],                 // TOTAL blue and white
+  [[1.0, 0.35, 0.7], [1.0, 0.85, 0.5]],                   // pink and gold
+  [[0.4, 1.0, 0.55], [1.0, 0.95, 0.6]],                   // green and gold
+];
+
+export class FX {
+  constructor(scene) {
+    this.p = new Float32Array(CAP * 3); this.c = new Float32Array(CAP * 3); this.s = new Float32Array(CAP);
+    this.v = new Float32Array(CAP * 3); this.life = new Float32Array(CAP); this.max = new Float32Array(CAP);
+    this.base = new Float32Array(CAP); this.drag = new Float32Array(CAP); this.grav = new Float32Array(CAP); this.tw = new Uint8Array(CAP);
+    this.rgb = new Float32Array(CAP * 3);
+    this.n = 0;
+    const g = new THREE.BufferGeometry();
+    this.aP = new THREE.BufferAttribute(this.p, 3).setUsage(THREE.DynamicDrawUsage);
+    this.aC = new THREE.BufferAttribute(this.c, 3).setUsage(THREE.DynamicDrawUsage);
+    this.aS = new THREE.BufferAttribute(this.s, 1).setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('position', this.aP); g.setAttribute('aColor', this.aC); g.setAttribute('aSize', this.aS);
+    this.mat = new THREE.ShaderMaterial({
+      uniforms: { uScale: { value: 400 } },
+      vertexShader: /* glsl */`
+        attribute float aSize; attribute vec3 aColor; uniform float uScale; varying vec3 vC;
+        void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv;
+          gl_PointSize = clamp(aSize * uScale / max(-mv.z, 0.1), 1.5, 96.0); vC = aColor; }`,      // never thinner than a pixel and a half: streaks stay visible all the way up to the sky triangle
+      fragmentShader: /* glsl */`
+        varying vec3 vC;
+        void main() { float d = length(gl_PointCoord - 0.5) * 2.0; float a = exp(-d * d * 4.0) * (1.0 - smoothstep(0.85, 1.0, d));
+          gl_FragColor = vec4(vC * a, 1.0); }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    this.points = new THREE.Points(g, this.mat); this.points.frustumCulled = false; this.points.renderOrder = 20;
+    scene.add(this.points);
+    this.streaks = []; this.rockets = [];
+    this.onBurst = null;      // (position, size) => {} for sound
+    this.onArrive = null;     // (streak) => {}
+  }
+  setScale(viewportHeightPx, fovDeg) { this.mat.uniforms.uScale.value = viewportHeightPx / (2 * Math.tan((fovDeg * Math.PI) / 360)); }
+
+  emit(x, y, z, vx, vy, vz, size, r, g, b, life, drag = 2, grav = 0, tw = 0) {
+    let i = this.n;
+    if (i >= CAP) { i = (Math.random() * CAP) | 0; } else this.n++;
+    this.p.set([x, y, z], i * 3); this.v.set([vx, vy, vz], i * 3); this.rgb.set([r, g, b], i * 3);
+    this.base[i] = size; this.life[i] = 0; this.max[i] = life; this.drag[i] = drag; this.grav[i] = grav; this.tw[i] = tw;
+  }
+  sparks(x, y, z, n, hot = 1) {
+    for (let k = 0; k < n; k++) {
+      const a = Math.random() * Math.PI * 2, sp = 0.6 + Math.random() * 2.2;
+      this.emit(x, y, z, Math.cos(a) * sp, 1.2 + Math.random() * 2.6, Math.sin(a) * sp, 0.05 + Math.random() * 0.05, 3.2 * hot, 1.7 * hot, 0.5 * hot, 0.35 + Math.random() * 0.45, 2.5, -7, 0);
+    }
+  }
+  // A light that leaves the diya and lands on its panel of the triangle, far up in the sky: it leaps
+  // up off the street, then flies on in a shallow arc.
+  streak(from, to, payload) {
+    const dist = from.distanceTo(to);
+    const mid = from.clone().lerp(to, 0.3); mid.y += 14 + dist * 0.02;
+    this.streaks.push({ a: from.clone(), m: mid, b: to.clone(), t: 0, dur: 0.55 + Math.min(1.1, dist / 260), payload, last: from.clone() });
+  }
+  firework(x, z, apex, pal = (Math.random() * PALETTES.length) | 0, big = 1) {
+    this.rockets.push({ x, y: 7 + Math.random() * 2, z, vy: 22 + Math.random() * 6, apex, pal, big });
+  }
+  burst(x, y, z, pal, big = 1) {
+    const cols = PALETTES[pal % PALETTES.length], n = Math.round(90 * big), sp = (8 + Math.random() * 4) * Math.sqrt(big);
+    for (let k = 0; k < n; k++) {
+      const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, rr = Math.sqrt(1 - u * u), s = sp * (0.85 + Math.random() * 0.3);
+      const c = cols[k % 3 === 0 ? 1 : 0], hdr = 3.2;
+      this.emit(x, y, z, rr * Math.cos(th) * s, u * s, rr * Math.sin(th) * s, 0.32 + Math.random() * 0.2, c[0] * hdr, c[1] * hdr, c[2] * hdr, 1.5 + Math.random() * 0.9, 1.25, -5.5, Math.random() < 0.3 ? 1 : 0);
+    }
+    for (let k = 0; k < 6; k++) this.emit(x, y, z, 0, 0, 0, 2.6 * big, 2.2, 1.8, 1.4, 0.18, 0, 0, 0); // the flash at the heart of the burst
+    if (this.onBurst) this.onBurst(new THREE.Vector3(x, y, z), big);
+  }
+
+  update(dt, time) {
+    // streaks
+    for (let i = this.streaks.length - 1; i >= 0; i--) {
+      const s = this.streaks[i]; s.t += dt;
+      const k = Math.min(1, s.t / s.dur), e = k * k * (3 - 2 * k), q = 1 - e;
+      const x = q * q * s.a.x + 2 * q * e * s.m.x + e * e * s.b.x;
+      const y = q * q * s.a.y + 2 * q * e * s.m.y + e * e * s.b.y;
+      const z = q * q * s.a.z + 2 * q * e * s.m.z + e * e * s.b.z;
+      // a bright head and a fading tail laid along the path travelled this frame
+      // a fine continuous tail: spacing follows the distance travelled, not the frame rate
+      // (closer than the sparks' own size, so near the camera the tail is a ribbon, not a string of beads)
+      const seg = Math.hypot(x - s.last.x, y - s.last.y, z - s.last.z), steps = Math.min(36, Math.max(3, Math.ceil(seg / 0.13)));
+      for (let j = 0; j < steps; j++) {
+        const f = j / steps;
+        this.emit(s.last.x + (x - s.last.x) * f, s.last.y + (y - s.last.y) * f, s.last.z + (z - s.last.z) * f, 0, 0, 0, 0.15, 3.0, 1.9, 0.7, 0.22, 0, 0, 0);
+      }
+      this.emit(x, y, z, 0, 0, 0, 0.5, 4.2, 3.4, 2.0, 0.05, 0, 0, 0);
+      s.last.set(x, y, z);
+      if (k >= 1) { this.streaks.splice(i, 1); if (this.onArrive) this.onArrive(s); }
+    }
+    // rockets
+    for (let i = this.rockets.length - 1; i >= 0; i--) {
+      const r = this.rockets[i]; r.y += r.vy * dt; r.vy -= 6 * dt;
+      this.emit(r.x + (Math.random() - 0.5) * 0.1, r.y, r.z, 0, -1, 0, 0.18, 2.6, 1.6, 0.6, 0.35, 1, 0, 0);
+      if (r.y >= r.apex || r.vy < 4) { this.rockets.splice(i, 1); this.burst(r.x, r.y, r.z, r.pal, r.big); }
+    }
+    // particles
+    let w = 0;
+    for (let i = 0; i < this.n; i++) {
+      const life = this.life[i] + dt;
+      if (life >= this.max[i]) continue;
+      if (w !== i) {
+        this.p.copyWithin(w * 3, i * 3, i * 3 + 3); this.v.copyWithin(w * 3, i * 3, i * 3 + 3); this.rgb.copyWithin(w * 3, i * 3, i * 3 + 3);
+        this.base[w] = this.base[i]; this.max[w] = this.max[i]; this.drag[w] = this.drag[i]; this.grav[w] = this.grav[i]; this.tw[w] = this.tw[i];
+      }
+      this.life[w] = life;
+      const o = w * 3, dr = Math.exp(-this.drag[w] * dt);
+      this.v[o] *= dr; this.v[o + 1] = this.v[o + 1] * dr + this.grav[w] * dt; this.v[o + 2] *= dr;
+      this.p[o] += this.v[o] * dt; this.p[o + 1] += this.v[o + 1] * dt; this.p[o + 2] += this.v[o + 2] * dt;
+      const k = 1 - life / this.max[w];
+      let a = k * k * (3 - 2 * k);
+      if (this.tw[w]) a *= 0.35 + 0.65 * (Math.sin(life * 38 + i) > 0.2 ? 1 : 0.15);
+      this.c[o] = this.rgb[o] * a; this.c[o + 1] = this.rgb[o + 1] * a; this.c[o + 2] = this.rgb[o + 2] * a;
+      this.s[w] = this.base[w] * (0.55 + 0.45 * k);
+      w++;
+    }
+    this.n = w;
+    this.points.geometry.setDrawRange(0, this.n);
+    this.aP.needsUpdate = this.aC.needsUpdate = this.aS.needsUpdate = true;
+  }
+  clear() { this.n = 0; this.streaks.length = 0; this.rockets.length = 0; }
+}
