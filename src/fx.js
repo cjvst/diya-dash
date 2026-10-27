@@ -2,7 +2,7 @@
 // One pool of point sprites, one draw call.
 import * as THREE from 'three';
 
-const CAP = 2400;
+const CAP = 3600;          // the finale's comet, barrage and glitter peak at about 3,000 at once
 const PALETTES = [
   [[1.0, 0.78, 0.35], [1.0, 0.95, 0.8]],                 // gold and white
   [[1.0, 0.25, 0.18], [1.0, 0.7, 0.3]],                   // red and amber
@@ -56,51 +56,79 @@ export class FX {
     }
   }
   // A light that leaves the diya and lands on its panel of the triangle, far up in the sky: it leaps
-  // up off the street, then flies on in a shallow arc.
-  streak(from, to, payload) {
+  // up off the street, then flies on in a shallow arc. With comet set it is the gem itself: a big head,
+  // a long thick tail and sparks shed along the way, sized up with distance so it stays bold all the way.
+  streak(from, to, payload, { dur, comet = false, done = null } = {}) {
     const dist = from.distanceTo(to);
-    const mid = from.clone().lerp(to, 0.3); mid.y += 14 + dist * 0.02;
-    this.streaks.push({ a: from.clone(), m: mid, b: to.clone(), t: 0, dur: 0.55 + Math.min(1.1, dist / 260), payload, last: from.clone() });
+    // the comet flies almost straight at its target, so on screen it never overshoots it
+    const mid = from.clone().lerp(to, comet ? 0.5 : 0.3); mid.y += comet ? 12 : 14 + dist * 0.02;
+    this.streaks.push({ a: from.clone(), m: mid, b: to.clone(), t: 0, dur: dur || 0.55 + Math.min(1.1, dist / 260), payload, last: from.clone(), comet, done });
   }
-  firework(x, z, apex, pal = (Math.random() * PALETTES.length) | 0, big = 1) {
-    this.rockets.push({ x, y: 7 + Math.random() * 2, z, vy: 22 + Math.random() * 6, apex, pal, big });
+  // kind: 0 a sphere, 1 a ring, 2 a willow of slow gold that droops and lingers
+  firework(x, z, apex, pal = (Math.random() * PALETTES.length) | 0, big = 1, kind = 0) {
+    this.rockets.push({ x, y: 7 + Math.random() * 2, z, vy: 22 + Math.random() * 6, apex, pal, big, kind });
   }
-  burst(x, y, z, pal, big = 1) {
-    const cols = PALETTES[pal % PALETTES.length], n = Math.round(90 * big), sp = (8 + Math.random() * 4) * Math.sqrt(big);
+  burst(x, y, z, pal, big = 1, kind = 0) {
+    const cols = PALETTES[pal % PALETTES.length], n = Math.round((kind === 1 ? 70 : 90) * big), sp = (8 + Math.random() * 4) * Math.sqrt(big);
+    // a ring lies in a plane tilted towards the camera
+    const tilt = (Math.random() - 0.5) * 0.9, ct = Math.cos(tilt), st = Math.sin(tilt);
     for (let k = 0; k < n; k++) {
-      const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, rr = Math.sqrt(1 - u * u), s = sp * (0.85 + Math.random() * 0.3);
-      const c = cols[k % 3 === 0 ? 1 : 0], hdr = 3.2;
-      this.emit(x, y, z, rr * Math.cos(th) * s, u * s, rr * Math.sin(th) * s, 0.32 + Math.random() * 0.2, c[0] * hdr, c[1] * hdr, c[2] * hdr, 1.5 + Math.random() * 0.9, 1.25, -5.5, Math.random() < 0.3 ? 1 : 0);
+      let vx, vy, vz;
+      if (kind === 1) { const th = (k / n) * Math.PI * 2, s = sp * 1.05; vx = Math.cos(th) * s; vy = Math.sin(th) * s * ct; vz = Math.sin(th) * s * st; }
+      else { const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, rr = Math.sqrt(1 - u * u), s = sp * (kind === 2 ? 0.7 : 1) * (0.85 + Math.random() * 0.3); vx = rr * Math.cos(th) * s; vy = u * s; vz = rr * Math.sin(th) * s; }
+      if (kind === 2) this.emit(x, y, z, vx, vy, vz, 0.3 + Math.random() * 0.15, 3.0, 1.9, 0.55, 2.6 + Math.random() * 1.2, 0.9, -4.0, 1);
+      else { const c = cols[k % 3 === 0 ? 1 : 0], hdr = 3.2; this.emit(x, y, z, vx, vy, vz, (0.32 + Math.random() * 0.2) * Math.sqrt(big), c[0] * hdr, c[1] * hdr, c[2] * hdr, 1.5 + Math.random() * 0.9, 1.25, -5.5, Math.random() < 0.3 ? 1 : 0); }
     }
     for (let k = 0; k < 6; k++) this.emit(x, y, z, 0, 0, 0, 2.6 * big, 2.2, 1.8, 1.4, 0.18, 0, 0, 0); // the flash at the heart of the burst
     if (this.onBurst) this.onBurst(new THREE.Vector3(x, y, z), big);
+  }
+  // gold glitter drifting down over an area: call each frame for as long as it should fall
+  glitter(cx, cz, w, d, n) {
+    for (let k = 0; k < n; k++) {
+      const x = cx + (Math.random() - 0.5) * w, z = cz + (Math.random() - 0.5) * d, y = 26 + Math.random() * 30, warm = Math.random();
+      this.emit(x, y, z, (Math.random() - 0.5) * 0.6, -1.5 - Math.random(), (Math.random() - 0.5) * 0.6, 0.28 + Math.random() * 0.18, 2.6, 1.7 + warm * 0.6, 0.5 + warm * 0.6, 2.4 + Math.random() * 1.4, 0.4, -0.6, 1);
+    }
   }
 
   update(dt, time) {
     // streaks
     for (let i = this.streaks.length - 1; i >= 0; i--) {
       const s = this.streaks[i]; s.t += dt;
-      const k = Math.min(1, s.t / s.dur), e = k * k * (3 - 2 * k), q = 1 - e;
+      // a comet lifts off and accelerates away; a streak eases in and out
+      const k = Math.min(1, s.t / s.dur), e = s.comet ? k * k * (1.6 - 0.6 * k) : k * k * (3 - 2 * k), q = 1 - e;
       const x = q * q * s.a.x + 2 * q * e * s.m.x + e * e * s.b.x;
       const y = q * q * s.a.y + 2 * q * e * s.m.y + e * e * s.b.y;
       const z = q * q * s.a.z + 2 * q * e * s.m.z + e * e * s.b.z;
       // a bright head and a fading tail laid along the path travelled this frame
       // a fine continuous tail: spacing follows the distance travelled, not the frame rate
       // (closer than the sparks' own size, so near the camera the tail is a ribbon, not a string of beads)
-      const seg = Math.hypot(x - s.last.x, y - s.last.y, z - s.last.z), steps = Math.min(36, Math.max(3, Math.ceil(seg / 0.13)));
-      for (let j = 0; j < steps; j++) {
-        const f = j / steps;
-        this.emit(s.last.x + (x - s.last.x) * f, s.last.y + (y - s.last.y) * f, s.last.z + (z - s.last.z) * f, 0, 0, 0, 0.15, 3.0, 1.9, 0.7, 0.22, 0, 0, 0);
+      const seg = Math.hypot(x - s.last.x, y - s.last.y, z - s.last.z);
+      if (s.comet) {
+        // sized with distance (about 15 px for the head, 8 for the tail) so it stays a bold comet all the way
+        const grow = 1 + Math.hypot(x - s.a.x, y - s.a.y, z - s.a.z) * 0.012;
+        const steps = Math.min(48, Math.max(4, Math.ceil(seg / (0.45 * grow))));
+        for (let j = 0; j < steps; j++) {
+          const f = j / steps;
+          this.emit(s.last.x + (x - s.last.x) * f, s.last.y + (y - s.last.y) * f, s.last.z + (z - s.last.z) * f, 0, 0, 0, 0.9 * grow, 3.4, 2.3, 0.9, 0.55, 0, 0, 0);
+        }
+        for (let j = 0; j < 5; j++) this.emit(x, y, z, (Math.random() - 0.5) * 6 * grow, (Math.random() - 0.5) * 6 * grow, (Math.random() - 0.5) * 6 * grow, 0.35 * grow, 3.2, 2.0, 0.6, 0.5, 2, -3 * grow, 1);
+        this.emit(x, y, z, 0, 0, 0, 1.9 * grow, 4.6, 4.0, 3.2, 0.05, 0, 0, 0);
+      } else {
+        const steps = Math.min(36, Math.max(3, Math.ceil(seg / 0.13)));
+        for (let j = 0; j < steps; j++) {
+          const f = j / steps;
+          this.emit(s.last.x + (x - s.last.x) * f, s.last.y + (y - s.last.y) * f, s.last.z + (z - s.last.z) * f, 0, 0, 0, 0.15, 3.0, 1.9, 0.7, 0.22, 0, 0, 0);
+        }
+        this.emit(x, y, z, 0, 0, 0, 0.5, 4.2, 3.4, 2.0, 0.05, 0, 0, 0);
       }
-      this.emit(x, y, z, 0, 0, 0, 0.5, 4.2, 3.4, 2.0, 0.05, 0, 0, 0);
       s.last.set(x, y, z);
-      if (k >= 1) { this.streaks.splice(i, 1); if (this.onArrive) this.onArrive(s); }
+      if (k >= 1) { this.streaks.splice(i, 1); if (s.done) s.done(s); else if (this.onArrive) this.onArrive(s); }
     }
     // rockets
     for (let i = this.rockets.length - 1; i >= 0; i--) {
       const r = this.rockets[i]; r.y += r.vy * dt; r.vy -= 6 * dt;
       this.emit(r.x + (Math.random() - 0.5) * 0.1, r.y, r.z, 0, -1, 0, 0.18, 2.6, 1.6, 0.6, 0.35, 1, 0, 0);
-      if (r.y >= r.apex || r.vy < 4) { this.rockets.splice(i, 1); this.burst(r.x, r.y, r.z, r.pal, r.big); }
+      if (r.y >= r.apex || r.vy < 4) { this.rockets.splice(i, 1); this.burst(r.x, r.y, r.z, r.pal, r.big, r.kind); }
     }
     // particles
     let w = 0;

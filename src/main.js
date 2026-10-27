@@ -74,10 +74,10 @@ function buildComposer() {
   // the grade, on the display image: cool night shadows that never go to dead black (they would vanish
   // in sunlight), warm lamplit highlights, a touch more colour, a light vignette and film grain
   gradePass = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uFade: { value: 0 } },
+    uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uFade: { value: 0 }, uFlash: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: /* glsl */`
-      uniform sampler2D tDiffuse; uniform float uTime; uniform float uFade; varying vec2 vUv;
+      uniform sampler2D tDiffuse; uniform float uTime; uniform float uFade; uniform float uFlash; varying vec2 vUv;
       void main() {
         vec3 c = texture2D(tDiffuse, vUv).rgb;
         float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -88,6 +88,7 @@ function buildComposer() {
         c *= mix(0.84, 1.0, smoothstep(0.9, 0.32, length(d)));
         float n = fract(sin(dot(vUv * vec2(1789.3, 2371.1) + fract(uTime), vec2(12.9898, 78.233))) * 43758.5453);
         c += (n - 0.5) * 0.014;
+        c += uFlash * vec3(1.0, 0.93, 0.8);       // the strike's flash
         c *= 1.0 - uFade;
         gl_FragColor = vec4(c, 1.0);
       }`,
@@ -172,7 +173,7 @@ async function boot() {
   street = new Street(scene, tex);
   flames = new Flames(700); pools = new Pools(500, tex.pool, tex.paving.map); washes = new Washes(120, tex.pool); rings = new Rings(40, T.makeRingTexture());
   gameDiyas = new DiyaSet(24, tex.diya, brass, { stands: true, standH: 0.52 });
-  decorDiyas = new DiyaSet(160, tex.diya, brass, { seg: 14 });
+  decorDiyas = new DiyaSet(230, tex.diya, brass, { seg: 14 });
   scene.add(gameDiyas.group, decorDiyas.group, flames.mesh, pools.mesh, washes.mesh, rings.mesh);
   rings.mat.uniforms.uFogCol.value.copy(FOG);
   fx = new FX(scene); fx.setScale(canvas.clientHeight * renderer.getPixelRatio(), camera.fov);
@@ -197,6 +198,7 @@ async function boot() {
   sound = new Sound(manifest);
   await sound.load(v => progress(0.6 + v * 0.38));
   fx.onBurst = (pos, big) => { const d = pos.distanceTo(camera.position); sound.atDistance(['firework_1', 'firework_2', 'firework_3'][(Math.random() * 3) | 0], d, clamp(pos.x / 20, -1, 1), 1.1 * big, 0.92 + Math.random() * 0.16); };
+  street.onIgnite = (x, y, z) => fx.sparks(x, y + 0.1, z, 5, 1.3);
   // the triangle is far off in the sky, but its bell should ring as if it were just over the rooftops
   fx.onArrive = s => { triangle.light(s.payload); sound.atDistance('bell', 26, 0, 1.2, 0.9 + (s.payload % 5) * 0.05); };
   progress(1);
@@ -218,6 +220,8 @@ function setText() {
 function show(id) { for (const s of document.querySelectorAll('.screen')) s.classList.toggle('on', s.id === id); }
 function toAttract(first) {
   mode = 'attract'; modeT = 0; run = newRun(1); run.course.length = 0; finale = null; snapCam = true; timers.length = 0;
+  street.chaseFront = -1e9; flashT = shakeT = -1; glitterUntil = 0;
+  resetFrames();                        // judge quality on this screen's frames, not the finale's
   glowTarget = 0.5; if (first) glow = 0.5; slotNext = 0; camS = -4;
   triangle.reset(); fx.clear();
   $('hud').classList.remove('on'); $('result').classList.remove('on', 'reveal');
@@ -231,6 +235,7 @@ function startCountdown(seed) {
   show(null);
   run = newRun(seed ?? (Math.random() * 1e9) | 0);
   slotNext = 0; triangle.reset(); fx.clear(); lastAct = 0; fwT = 4; timers.length = 0;
+  street.chaseFront = -1e9; flashT = shakeT = -1; glitterUntil = 0;
   mode = 'countdown'; modeT = 0; countShown = 4; lateShown = 0;
   glowTarget = 0.1;                   // the lights dim before the run (the shops stay lit)
   snapCam = true;
@@ -242,7 +247,7 @@ function popCount(text, kind) {
   const c = $('count'); c.textContent = text; c.className = 'count'; void c.offsetWidth; c.className = `count pop ${kind}`;
 }
 function goRun() {
-  mode = 'play'; modeT = 0;
+  mode = 'play'; modeT = 0; resetFrames();
   sound.play('conch');
   sound.beginRun();
   popCount(S.go, 'go');
@@ -266,27 +271,48 @@ function launchFirework(near = false) {
   const d = Math.abs(z + run.s);
   sound.atDistance('firework_launch', d * 0.6, 0, 0.5);
 }
+// The finale, in beats: the gem sails out of the gali at full speed while a dholak roll builds; the chowk's
+// diyas catch fire in a race towards the horizon; the gem launches as a comet into the heart of the sky
+// triangle and strikes it on the downbeat (conch, drums, flash, a shockwave across the panels, the frame
+// flaring, the camera shaken); then a barrage of fireworks and gold glitter, and the result.
 function endRun() {
   mode = 'finale'; modeT = 0;
-  finale = { s0: run.s, v0: speedAt(CONFIG.DURATION), celebrated: false, shown: false, camFrom: camera.position.clone(), lookFrom: lookAt.clone() };
+  // the strike lands on a bar line at least FIN.impactLead seconds out, so the light and the music hit together
+  const impact = sound ? sound.untilBar(FIN.impactLead) : FIN.impactLead;
+  finale = { s0: run.s, v0: speedAt(CONFIG.DURATION), impact, chaseAt: -1, launched: false, struck: false, shown: false };
   secsEl.textContent = '0'; timerFill.style.transform = 'scaleX(0)';
   $('hint').classList.remove('on');
-  sound.endRun();
+  if (sound) sound.finale(impact);
   buzz([30, 50, 30]);
 }
-function celebrate() {
-  finale.celebrated = true;
-  triangle.celebrate();
-  sound.play('cheer'); sound.play('flame_whoosh', { gain: 0.8 });
-  // the more of the triangle the player lit, the bigger the show: 3 rockets for a few panels, 7 for all of it
-  const n = 3 + Math.round(4 * triangle.litCount() / PANELS);
-  for (let i = 0; i < n; i++) after(0.12 + i * 0.26, () => chowkFirework(i + Math.round((7 - n) / 2), 1.8));
-  buzz([40, 60, 40, 60, 120]);
+function launchGem() {
+  finale.launched = true;
+  $('hud').classList.remove('on');           // a clean sky for the strike; the score comes back on the result
+
+  const from = player.flameBase(new THREE.Vector3());
+  fx.sparks(from.x, from.y, from.z, 34, 1.6);
+  fx.streak(from, triangle.heart, -1, { dur: FIN.flight, comet: true, done: strike });
+  buzz(18);
 }
-// fireworks over the chowk, between the camera and the sky triangle, bursting around its upper half
-function chowkFirework(i, big) {
-  fx.firework((i - 3) * 13 + (Math.random() - 0.5) * 8, camera.position.z - 95 - Math.random() * 70, 40 + Math.random() * 22, i % 5, big);
+function strike() {
+  finale.struck = true; finale.strikeAt = modeT; flashT = 0; shakeT = 0;
+  triangle.blast(); triangle.celebrate();
+  // the more of the triangle the player lit, the bigger the show: 4 shells for a few panels, 10 for all of it.
+  // The first ones burst at once, high in the sky (the strike set them off); rockets climb in after them.
+  const n = 4 + Math.round(6 * triangle.litCount() / PANELS);
+  for (let i = 0; i < n; i++) after(0.06 + i * 0.16, () => chowkFirework(i, 1.9, i < 4));
+  glitterUntil = clock + 3.4;
+  buzz([70, 40, 150]);
 }
+// Fireworks over the chowk, between the camera and the sky triangle, in pairs left and right working
+// outwards: gold and TOTAL blue spheres, rings and willows of slow gold.
+function chowkFirework(i, big, now = false) {
+  // in pairs, at three spreads either side of the triangle, bursting about its upper half
+  const side = i % 2 ? 1 : -1, x = side * (5 + (Math.floor(i / 2) % 3) * 8) + (Math.random() - 0.5) * 4;
+  const z = camera.position.z - 70 - Math.random() * 40, apex = 24 + Math.random() * 20, pal = [0, 2, 3, 0, 4][i % 5], kind = [0, 0, 1, 2][i % 4];
+  if (now) fx.burst(x, apex, z, pal, big, kind); else fx.firework(x, z, apex, pal, big, kind);
+}
+let flashT = -1, shakeT = -1, glitterUntil = 0;
 function showResult() {
   finale.shown = true; mode = 'result'; modeT = 0;
   $('hud').classList.remove('on');
@@ -340,7 +366,7 @@ const CAM = { back: 5.6, up: 3.0, look: 9, lookY: 1.2, follow: 0.28 };
 // The finale: a 3.4 s glide that leaves the gali at about 1.7 s and ends ~36 m on, in the chowk; the gem
 // rises a little as it comes out, and the camera settles low behind it, looking up the line of the street
 // with a slightly narrower lens, so the whole sky triangle fills the top of the screen above the result panel.
-const FIN = { glide: 3.4, crane: 1.2, celebrate: 3.0, result: 4.9, lift: 1.3, back: 8.5, camY: 3.2, pitch: -4.5, fov: 62 };
+const FIN = { glide: 3.4, crane: 1.2, lift: 1.3, back: 8.5, camY: 3.2, pitch: -4.5, fov: 62, impactLead: 3.0, flight: 1.0, chase: 85, resultAfter: 1.7 };
 let drag = null;
 const inGame = () => (mode === 'play' || mode === 'countdown') && !paused;
 function metersPerPx() {
@@ -416,7 +442,8 @@ function frameStats() {
 let slowChecks = 0, fastChecks = 0, steppedDown = false;
 const resetFrames = () => { fcount = 0; fi = 0; slowChecks = 0; fastChecks = 0; };
 function adaptQuality(dt) {
-  if (params.get('q') || document.hidden) return;
+  // never mid-moment: a change rebuilds the renderer (a visible hitch), so not in the countdown, finale or result
+  if (params.get('q') || document.hidden || !(mode === 'attract' || mode === 'play')) return;
   qCheckT += dt;
   if (qCheckT < 1.5 || fcount < 90) return;
   qCheckT = 0;
@@ -459,14 +486,23 @@ function update(dt) {
     const T = FIN.glide, k = Math.min(1, modeT / T);
     run.s = finale.s0 + finale.v0 * T * (k - Math.pow(k, 4.1) / 4.1);
     run.x += (0 - run.x) * Math.min(1, dt * 1.6);
-    if (!finale.celebrated && modeT > FIN.celebrate && fx.streaks.length === 0) celebrate();
-    if (!finale.shown && finale.celebrated && modeT > FIN.result) showResult();
+    // out of the gali, the race of fire sets off along the chowk's diyas
+    if (finale.chaseAt < 0 && run.s > COURSE_END + 20) finale.chaseAt = modeT;
+    if (finale.chaseAt >= 0) street.chaseFront = COURSE_END + 20 + (modeT - finale.chaseAt) * FIN.chase;
+    if (!finale.launched && modeT >= finale.impact - FIN.flight) launchGem();
+    if (!finale.shown && finale.struck && modeT > finale.strikeAt + FIN.resultAfter) showResult();
   } else if (mode === 'result' && count) {
     count.t += dt;
     if (!count.done) {
       const k = clamp(count.t / count.dur, 0, 1), v = Math.floor(ease(k) * run.score + 1e-6);
       if (v > count.shown) { count.shown = v; $('resNum').textContent = v; if (v % 2 === 0) sound.play('ui_tick', { gain: 0.35, rate: 1 + Math.min(v, 60) * 0.012 }); }
-      if (k >= 1) { count.done = true; $('resNum').textContent = run.score; after(0.35, revealPrize); }
+      if (k >= 1) {
+        // the final number lands with a thump
+        count.done = true; const el = $('resNum'); el.textContent = run.score;
+        el.classList.remove('slam'); void el.offsetWidth; el.classList.add('slam');
+        sound.play('music_hit_dholak_bass', { gain: 1.2 }); sound.play('ignite_b', { gain: 0.7 }); buzz(30);
+        after(0.35, revealPrize);
+      }
     }
   } else if (mode === 'attract') {
     camS = -4 + Math.sin(clock * 0.25) * 1.5;
@@ -496,11 +532,14 @@ function update(dt) {
   const showPlayer = mode === 'countdown' || mode === 'play' || mode === 'finale' || mode === 'result' || mode === 'attract';
   // out in the chowk the gem rises a little, into the open
   const lift = mode === 'result' ? FIN.lift : mode === 'finale' ? FIN.lift * ease(clamp((modeT - 1.4) / 1.8, 0, 1)) : 0;
-  // (once the result panel is up the gem bows out, rather than poke its flame over the panel's edge)
-  const gemA = !showPlayer ? 0 : mode === 'result' ? 1 - clamp(modeT / 0.4, 0, 1) : 1;
+  // in the finale the gem itself becomes the comet: it vanishes into it at launch
+  const gemA = !showPlayer || mode === 'result' ? 0 : mode === 'finale' && finale.launched ? 1 - clamp((modeT - (finale.impact - FIN.flight)) / 0.12, 0, 1) : 1;
   player.update(dt, clock, mode === 'attract' ? Math.sin(clock * 0.7) * 0.6 : run.x, pz, run.level, flames, pools, gemA, lift);
   flames.end(clock); pools.end(); washes.end(); rings.end(); gameDiyas.end(); decorDiyas.end();
+  if (clock < glitterUntil) fx.glitter(camera.position.x, camera.position.z - 75, 110, 80, 6);
   fx.update(dt, clock); triangle.update(dt, clock);
+  if (flashT >= 0) { flashT += dt; if (flashT > 1.5) flashT = -1; }
+  if (shakeT >= 0) { shakeT += dt; if (shakeT > 1.2) shakeT = -1; }
   triGlow += (triangle.litCount() / PANELS - triGlow) * Math.min(1, dt * 2);
   triLight.intensity = 0.12 + 1.5 * triGlow;
   // camera
@@ -508,11 +547,19 @@ function update(dt) {
   sky.position.copy(camera.position); stars.position.copy(camera.position); stars.material.uniforms.uTime.value = clock;
   gradePass.uniforms.uTime.value = clock;
   gradePass.uniforms.uFade.value = fade ? (fade.t < 0.35 ? fade.t / 0.35 : 1 - (fade.t - 0.35) / 0.45) : 0;
+  gradePass.uniforms.uFlash.value = flashT >= 0 && !reducedMotion ? 0.42 * Math.exp(-flashT * 7) : 0;
 }
 function revealPrize() {
   $('result').classList.add('reveal');
-  if (count.win) { sound.play('cheer', { gain: count.big ? 0.9 : 0.6 }); for (let i = 0; i < (count.big ? 5 : 3); i++) after(i * 0.28, () => chowkFirework(1 + i * (count.big ? 1 : 2), 1.6)); buzz(count.big ? [60, 50, 60, 50, 160] : [50, 60, 110]); }
-  else { sound.play('bell_b', { gain: 0.6, rate: 0.39 }); buzz(25); }
+  // a prize sets the sky triangle off once more, with a second volley and more glitter
+  if (count.win) {
+    sound.play('cheer', { gain: count.big ? 0.9 : 0.6 }); sound.play('firework_3', { gain: 0.8, delay: 0.2 });
+    triangle.blast(); glitterUntil = clock + 2.5;
+    for (let i = 0; i < (count.big ? 6 : 4); i++) after(i * 0.22, () => chowkFirework(i, 1.7, i < 2));
+    buzz(count.big ? [60, 50, 60, 50, 160] : [50, 60, 110]);
+  } else { sound.play('bell_b', { gain: 0.6, rate: 0.39 }); buzz(25); }
+  // then the music settles under the promoter's voice
+  after(3.5, () => sound.settle());
 }
 
 // Gameplay diyas: on their stands ahead of the player, each on a marigold ring so it reads in any light.
@@ -569,6 +616,11 @@ function placeCamera(dt, pz) {
   snapCam = false;
   camera.lookAt(lookAt);
   if (mode === 'play' && !reducedMotion) camera.rotateZ(clamp(-player.vx * 0.006, -0.05, 0.05));
+  // the strike shakes the camera, hard for an instant and settling within a second
+  if (shakeT >= 0 && !reducedMotion) {
+    const a = Math.exp(-shakeT * 4.5);
+    camera.rotateX(Math.sin(clock * 53) * a * 0.014); camera.rotateY(Math.sin(clock * 41 + 2) * a * 0.012); camera.rotateZ(Math.sin(clock * 37 + 1) * a * 0.01);
+  }
 }
 
 function render() { renderer.info.reset(); composer.render(); }
@@ -593,7 +645,7 @@ if (DEBUG) Object.assign(window.DiyaDash, {
   },
   setQuality(name) { qi = Math.max(0, QUALITY.findIndex(q => q.name === name)); buildComposer(); },
   passes() { return { bloomPass, gradePass, composer }; }, scene,
-  world() { return { street, pools, washes, player, keyLight, camera }; },
+  world() { return { street, pools, washes, player, keyLight, camera, fx, triangle, finale }; },
   // dev: render one frame and post it to the local dev server for inspection
   // dev: render 15 s of a run's sound offline and post it as a WAV for measurement
   async renderMix(solo, file = 'mix') {

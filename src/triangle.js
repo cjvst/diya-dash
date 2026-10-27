@@ -41,13 +41,16 @@ export class TotalTriangle {
     this.state = new Float32Array(PANELS * 4);            // lit, flash, layer, unused
     this.stateTex = new THREE.DataTexture(this.state, PANELS, 1, THREE.RGBAFormat, THREE.FloatType);
     this.stateTex.needsUpdate = true;
+    // the heart of the triangle (its centroid, a third of the way down from the top edge): where the gem strikes
+    const heartY = top - Ht / 3;
+    this.heart = new THREE.Vector3(0, this.group.position.y + heartY * S, z);
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { uState: { value: this.stateTex }, uTime: { value: 0 }, uN: { value: PANELS }, uReveal: { value: 0 } },
+      uniforms: { uState: { value: this.stateTex }, uTime: { value: 0 }, uN: { value: PANELS }, uReveal: { value: 0 }, uBlast: { value: -1 }, uHeart: { value: new THREE.Vector2(0, heartY) } },
       vertexShader: /* glsl */`
         attribute vec3 aBary; attribute float aIdx; varying vec3 vB; varying float vI; varying vec2 vXY;
         void main() { vB = aBary; vI = aIdx; vXY = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: /* glsl */`
-        uniform sampler2D uState; uniform float uTime; uniform float uN; uniform float uReveal;
+        uniform sampler2D uState; uniform float uTime; uniform float uN; uniform float uReveal; uniform float uBlast; uniform vec2 uHeart;
         varying vec3 vB; varying float vI; varying vec2 vXY;
         void main() {
           vec4 st = texture2D(uState, vec2((vI + 0.5) / uN, 0.5));
@@ -63,6 +66,12 @@ export class TotalTriangle {
           vec3 gold = mix(vec3(0.8, 0.3, 0.03), vec3(0.85, 0.53, 0.16), smoothstep(0.0, 0.3, edge)) * sheen + rim * vec3(1.4, 0.85, 0.32);
           vec3 c = mix(dark, gold, lit) + flash * vec3(2.6, 2.2, 1.7);
           c = mix(c, c * 0.3 + vec3(0.06, 0.24, 0.8) * (0.55 + rim), uReveal * lit);
+          // the gem's strike: a white-hot flash, then a shockwave racing out from the heart across every panel
+          if (uBlast >= 0.0) {
+            float r = length(vXY - uHeart), front = uBlast * 15.0;
+            float wave = exp(-pow((r - front) / 0.85, 2.0)) * (1.0 - smoothstep(0.55, 1.1, uBlast));
+            c += vec3(2.6, 2.1, 1.5) * wave * (0.5 + 0.5 * lit + rim) + vec3(1.6, 1.3, 0.95) * exp(-uBlast * 3.2) * (0.35 + 0.65 * lit);
+          }
           gl_FragColor = vec4(c, 1.0);
         }`,
       fog: false, side: THREE.DoubleSide,
@@ -76,10 +85,11 @@ export class TotalTriangle {
     for (let i = 0; i < lu.count; i++) lu.setXY(i, (lp.getX(i) + Wt / 2) / Wt, (lp.getY(i) - bottom) / Ht);
     // dimmed to undo the exposure the night grade adds, so the mark keeps its own blues instead of washing out
     this.logoMat = new THREE.MeshBasicMaterial({ map: brandTex, color: new THREE.Color(0.6, 0.6, 0.6), transparent: true, opacity: 0, fog: false, depthWrite: false });
-    const logo = new THREE.Mesh(logoGeo, this.logoMat); logo.position.z = 0.08; logo.renderOrder = 2;
-    this.group.add(logo);
+    const logo = new THREE.Mesh(logoGeo, this.logoMat); logo.position.z = 0.08; logo.renderOrder = 2; logo.visible = false;
+    this.group.add(logo); this.logo = logo;      // (only drawn once it starts to show: it is a quarter of the screen)
     // a frame of gold light around it, with lamps along the top edge
     const frameMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 0.9, 0.32), fog: false });
+    this.frameMat = frameMat; this.frameCol = frameMat.color.clone();
     const path = new THREE.CurvePath();
     const A = new THREE.Vector3(-Wt / 2 - 0.15, top + 0.12, 0), B = new THREE.Vector3(Wt / 2 + 0.15, top + 0.12, 0), C = new THREE.Vector3(0, bottom - 0.2, 0);
     path.add(new THREE.LineCurve3(A, B)); path.add(new THREE.LineCurve3(B, C)); path.add(new THREE.LineCurve3(C, A));
@@ -90,7 +100,16 @@ export class TotalTriangle {
     const lm = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.1, 0), new THREE.MeshBasicMaterial({ fog: false }), lamps.length);
     const m = new THREE.Matrix4(), cA = new THREE.Color(2.2, 1.1, 0.3), cB = new THREE.Color(2.2, 1.7, 0.7);
     lamps.forEach((b, i) => { m.makeTranslation(b[0], b[1], b[2]); lm.setMatrixAt(i, m); lm.setColorAt(i, b[3] ? cA : cB); });
-    this.group.add(lm);
+    this.group.add(lm); this.lampMat = lm.material;
+    // the flash of the strike: a soft burst of light across the sky, centred on the heart
+    const fc = document.createElement('canvas'); fc.width = fc.height = 128;
+    const fx = fc.getContext('2d'), gr = fx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.15, 'rgba(255,236,200,.75)'); gr.addColorStop(0.45, 'rgba(255,190,110,.22)'); gr.addColorStop(1, 'rgba(255,160,80,0)');
+    fx.fillStyle = gr; fx.fillRect(0, 0, 128, 128);
+    this.flashMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(fc), color: new THREE.Color(1.6, 1.35, 1.0), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false });
+    this.flash = new THREE.Sprite(this.flashMat); this.flash.position.copy(this.heart); this.flash.renderOrder = 19; this.flash.visible = false;
+    scene.add(this.flash);
+    this.width = width;
     // the official wordmark, lit white, under the tip
     const wAspect = wordTex.image.width / wordTex.image.height, ww = 6.4;
     const word = new THREE.Mesh(new THREE.PlaneGeometry(ww, ww / wAspect), new THREE.MeshBasicMaterial({ map: wordTex, transparent: true, fog: false, color: new THREE.Color(1.15, 1.15, 1.15), depthWrite: false }));
@@ -98,7 +117,13 @@ export class TotalTriangle {
     this.word = word;
     this.reset();
   }
-  reset() { this.state.fill(0); this.stateTex.needsUpdate = true; this.next = 0; this.revealT = -1; this.logoMat.opacity = 0; this.mat.uniforms.uReveal.value = 0; }
+  reset() {
+    this.state.fill(0); this.stateTex.needsUpdate = true; this.next = 0; this.revealT = -1; this.logoMat.opacity = 0; this.logo.visible = false; this.mat.uniforms.uReveal.value = 0;
+    this.blastT = -1; this.mat.uniforms.uBlast.value = -1; this.flash.visible = false;
+    this.frameMat.color.copy(this.frameCol); this.lampMat.color.setScalar(1);
+  }
+  // the gem strikes the heart: flash, shockwave, the frame flares
+  blast() { this.blastT = 0; this.flash.visible = true; }
   // world position of the panel the next streak should land on
   slotFor(i) { return this.centres[i % PANELS]; }
   light(i) {
@@ -113,10 +138,18 @@ export class TotalTriangle {
     for (let k = 0; k < PANELS; k++) { const o = k * 4 + 1; if (this.state[o] > 0) { this.state[o] = Math.max(0, this.state[o] - dt * 2.2); dirty = true; } }
     if (dirty) this.stateTex.needsUpdate = true;
     this.mat.uniforms.uTime.value = time;
+    if (this.blastT >= 0) {
+      this.blastT += dt; const t = this.blastT, k = Math.exp(-t * 2.6);
+      this.mat.uniforms.uBlast.value = t;
+      this.flashMat.opacity = Math.min(1, t * 12) * k;
+      this.flash.scale.setScalar(this.width * (0.9 + 1.6 * (1 - Math.exp(-t * 3))));
+      if (t > 2.5) this.flash.visible = false;
+      this.frameMat.color.copy(this.frameCol).multiplyScalar(1 + 2.2 * k); this.lampMat.color.setScalar(1 + 2.5 * k);
+    }
     if (this.revealT >= 0) {
       this.revealT += dt;
       const full = this.litCount() >= PANELS;
-      if (full) { const k = Math.min(1, this.revealT / 1.6); this.mat.uniforms.uReveal.value = k; this.logoMat.opacity = k * 0.94; }
+      if (full) { const k = Math.min(1, this.revealT / 1.6); this.mat.uniforms.uReveal.value = k; this.logoMat.opacity = k * 0.94; this.logo.visible = k > 0.001; }
     }
   }
 }

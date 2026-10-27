@@ -215,6 +215,7 @@ export class Street {
     this.slPos = Array.from({ length: SL_N }, () => new THREE.Vector4(0, -50, 0, 1));   // xyz, 1 / reach²
     this.slCol = Array.from({ length: SL_N }, () => new THREE.Vector4(0, 0, 0, 1));     // rgb, 1 / size²
     this.slLim = 90; this._cand = []; this._t = 0;
+    this.chaseFront = -1e9; this.onIgnite = null;     // the finale's race of fire along the chowk's diyas (see update)
     const slPos = this.slPos, slCol = this.slCol;
     // houses and their props share one material: the facade atlas times vertex colour
     this.facMat = new THREE.MeshLambertMaterial({ map: tex.facade.map, emissiveMap: tex.facade.emissiveMap, emissive: 0xffb466, emissiveIntensity: 1.25, vertexColors: true });
@@ -366,12 +367,22 @@ export class Street {
       const z0 = -sl.k * SEG;
       for (const d of sl.decorList) {
         const dz = z0 + d.z;
-        if (-dz < s - 10 || -dz > s + 75) continue;
-        decorDiyas.add(d.x, d.y, dz, d.yaw, 1.05, d.f, false, wick);
-        const on = Math.min(1, Math.max(0, (g - d.thr) / 0.05));
+        if (-dz < s - 10 || -dz > s + (d.chase === undefined ? 75 : 118)) continue;
+        decorDiyas.add(d.x, d.y, dz, d.yaw, d.chase === undefined ? 1.05 : 1.3, d.f, false, wick);
+        let on, pop = 0;
+        if (d.chase === undefined) on = Math.min(1, Math.max(0, (g - d.thr) / 0.05));
+        else {
+          // the finale's race of fire: each diya catches as the front passes it, with a flare as it does
+          const past = this.chaseFront - d.chase;
+          on = past <= 0 ? 0 : 1; pop = past > 0 && past < 14 ? 1 - past / 14 : 0;
+          if (on && !d.lit) { d.lit = true; if (this.onIgnite) this.onIgnite(wick.x, wick.y, wick.z); }
+          if (!on) d.lit = false;
+        }
         if (on > 0) {
-          flames.push(wick.x, wick.y - 0.01, wick.z, 0.2 * on, d.yaw * 3.1, 1.0 * on);
-          pools.push(d.x, d.y + 0.005, dz, 2.2, 0.38 * on, 0.21 * on, 0.07 * on);
+          // (the chowk's lines burn bigger than a doorstep diya: they are the runway to the triangle)
+          const big = d.chase === undefined ? 1 : 1.35;
+          flames.push(wick.x, wick.y - 0.01, wick.z, (0.2 + 0.4 * pop) * big * on, d.yaw * 3.1, (1.0 + 1.6 * pop) * (big > 1 ? 1.15 : 1) * on);
+          pools.push(d.x, d.y + 0.005, dz, (2.2 + 2.2 * pop) * big, (0.38 + 0.5 * pop) * big * on, (0.21 + 0.28 * pop) * big * on, (0.07 + 0.08 * pop) * big * on);
         } else flames.push(wick.x, wick.y - 0.01, wick.z, 0.05, d.yaw * 3.1, 0.12);
       }
     }
@@ -385,8 +396,9 @@ export class Street {
     const rr = mulberry32(mod(k * 7919 + 13, 1e9));
     sl.decorList = [];
     const decs = [], fpParts = [], brdParts = [];
-    // out of the gali, two lines of diyas lead on across the chowk and the open ground to the sky triangle
-    if (beyond) for (let j = 0; j < 8; j++) for (const sx of [-1, 1]) sl.decorList.push({ x: sx * 3.4, y: 0, z: -(j + 0.5) * 3, yaw: rr() * TAU, f: (rr() * 3) | 0, thr: 0 });
+    // out of the gali, two lines of diyas lead on across the chowk and the open ground to the sky triangle;
+    // they wait unlit until the finale sets them alight in a race towards the horizon (chase = where along it)
+    if (beyond) for (let j = 0; j < 8; j++) for (const sx of [-1, 1]) sl.decorList.push({ x: sx * 3.4, y: 0, z: -(j + 0.5) * 3, yaw: rr() * TAU, f: (rr() * 3) | 0, thr: 0, chase: s0 + (j + 0.5) * 3, lit: false });
     if (!plaza) [-1, 1].forEach((side, si) => {
       const vlist = this.variants[act][si];
       const v = vlist[mod(k * 3 + si * 2 + ((rr() * 2) | 0), vlist.length)];
