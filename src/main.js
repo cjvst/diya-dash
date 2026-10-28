@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { BloomOutputPass, SceneRenderPass, dropDepth } from './post.js';
 import { CONFIG, newRun, step, botStep, speedAt, COURSE_END, ACT_STARTS, actAt, tierFor, mulberry32, REACH, ROAD_X, onFire, HIT_R } from './rules.js';
 import * as T from './textures.js';
 import { Street, GHAT_Z, WATER_Y } from './world.js';
@@ -54,6 +55,9 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPrefer
 // lamplight from every shop and door, strings and lanterns overhead, cool moonlight only in the gaps,
 // so the play area stays bright through screen glare. A filmic curve rolls the flames off to warm white.
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
+// every shader is checked for errors as it is linked, a synchronous round trip to the GPU each; the shaders are
+// fixed, so in the field (not with ?debug) they are trusted and the first load is quicker
+renderer.debug.checkShaderErrors = DEBUG;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
 // night haze: the far end of the gali sinks into dark indigo, and only its lights carry through
@@ -64,7 +68,7 @@ const camera = new THREE.PerspectiveCamera(64, 1, 0.3, 2400);
 // The sky triangle: framed by the V of the rooftops from the start, its top edge just under the HUD by
 // the end of the run, and whole above the result panel from the chowk.
 const SKY_TRI = { z: -(COURSE_END + 1220), width: 610, apexY: 126 };
-let composer, bloomPass, gradePass;
+let composer, bloomPass, gradePass, fusedPost = true, ldrOut = false;
 // the reflection camera and its target (see renderReflections)
 const REFL = 1, reflCam = new THREE.PerspectiveCamera(); reflCam.layers.set(REFL);
 let reflRT = null;
@@ -72,15 +76,26 @@ const _rq = new THREE.Matrix4(), _rt = new THREE.Vector3(), _cc = new THREE.Colo
 function buildComposer() {
   const q = QUALITY[qi], W = canvas.clientWidth, H = canvas.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, resting ? 1 : q.dpr);
   renderer.setPixelRatio(dpr); renderer.setSize(W, H, false);
-  if (composer) composer.dispose();
+  // (the old passes' targets and materials too: the composer frees only its own two)
+  if (composer) { for (const p of composer.passes) p.dispose(); composer.dispose(); }
   const rt = new THREE.WebGLRenderTarget(W * dpr, H * dpr, { type: THREE.HalfFloatType, samples: q.msaa });
   composer = new EffectComposer(renderer, rt);
+  // The composer's two targets take turns, the same way every frame: the scene is drawn into one, and the
+  // bloom-and-output pass writes the finished picture into the other for the grade to read. Only the scene is
+  // depth-tested, so the other has no depth buffer (one less full-screen buffer to clear and, on a phone's GPU,
+  // to write back). It stays half-float: in 8 bits the grade's sharpening and contrast drew faint bands in the
+  // night sky.
+  composer.renderTarget1.dispose();
+  composer.renderTarget1 = composer.writeBuffer = new THREE.WebGLRenderTarget(W * dpr, H * dpr, { type: ldrOut ? THREE.UnsignedByteType : THREE.HalfFloatType, depthBuffer: false });
   composer.setPixelRatio(dpr); composer.setSize(W, H);
-  composer.addPass(new RenderPass(scene, camera));
-  // lamps, flames and bulbs bloom into a soft halo; lit walls and stones stay crisp
-  bloomPass = new UnrealBloomPass(new THREE.Vector2(W * dpr * q.bloomRes, H * dpr * q.bloomRes), q.bloom * 0.62, 0.5, 1.05);
+  composer.addPass(new SceneRenderPass(scene, camera));
+  // lamps, flames and bulbs bloom into a soft halo; lit walls and stones stay crisp. The bloom pass also does
+  // the output transform (tone mapping and sRGB) in the same shader as its blend, one full-screen pass fewer
+  // (post.js); fusedPost = false puts three's two passes back, for comparing frames (debug only)
+  const bloomArgs = [new THREE.Vector2(W * dpr * q.bloomRes, H * dpr * q.bloomRes), q.bloom * 0.62, 0.5, 1.05];
+  bloomPass = fusedPost ? new BloomOutputPass(...bloomArgs) : new UnrealBloomPass(...bloomArgs);
   composer.addPass(bloomPass);
-  composer.addPass(new OutputPass());
+  if (!fusedPost) composer.addPass(new OutputPass());
   // the grade, on the display image: cool night shadows that never go to dead black (they would vanish
   // in sunlight), warm lamplit highlights, a touch more colour, a light vignette and film grain
   gradePass = new ShaderPass({
@@ -155,6 +170,16 @@ function buildComposer() {
   fx && fx.setScale(H * dpr, camera.fov);
   if (reflRT) { reflRT.dispose(); reflRT = null; }
 }
+// Resting and waking (twice a player), and a resize, change only the size and the pixel ratio: the same
+// pipeline is resized in place (every pass follows the composer), instead of being built again on the player's
+// first touch. The reflection target follows by itself (renderReflections sizes it).
+function sizeComposer() {
+  const q = QUALITY[qi], W = canvas.clientWidth, H = canvas.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, resting ? 1 : q.dpr);
+  renderer.setPixelRatio(dpr); renderer.setSize(W, H, false);
+  composer.setPixelRatio(dpr); composer.setSize(W, H);
+  gradePass.uniforms.uPx.value.set(1 / (W * dpr), 1 / (H * dpr)); gradePass.uniforms.uAspect.value = W / H;
+  fx && fx.setScale(H * dpr, camera.fov);
+}
 
 /* ---------------- sky ---------------- */
 const sky = new THREE.Mesh(new THREE.SphereGeometry(380, 32, 16), new THREE.ShaderMaterial({
@@ -197,6 +222,11 @@ const keyLight = new THREE.DirectionalLight(0xa9b8ff, 0.45); keyLight.position.s
 const triLight = new THREE.DirectionalLight(0xffc27a, 0); triLight.position.set(0, 0.26, -1); scene.add(triLight);
 let triGlow = 0;
 const diyaLights = [0, 1].map(() => { const l = new THREE.PointLight(0xff9a40, 0, 9, 2); scene.add(l); return l; });
+// The reflection camera sees only layer REFL, where no light was, so between its pass and the scene's the
+// light count went 6, 0, 6 and three looked every lit material's shader up again, twice a frame. The same set
+// (a sky light, two directional, three point, the gem's included), switched off and on that layer alone, keeps
+// the counts equal: neither picture changes, the lookups stop.
+for (const L of [new THREE.HemisphereLight(0, 0, 0), new THREE.DirectionalLight(0, 0), new THREE.DirectionalLight(0, 0), new THREE.PointLight(0, 0), new THREE.PointLight(0, 0), new THREE.PointLight(0, 0)]) { L.layers.set(REFL); scene.add(L); }
 renderer.info.autoReset = false;
 
 /* ---------------- state ---------------- */
@@ -296,7 +326,14 @@ async function boot() {
   // would otherwise compile in the middle of a run, and every santoor and tumbi note is built ahead.
   street.update(0, 0, flames, pools, decorDiyas, washes);
   const hidden = []; scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } });
-  renderer.compile(scene, camera);
+  // compiled for the target the scene is really drawn into (the composer's half-float buffer: no tone mapping,
+  // linear output), not the screen: compiled for the screen, every program was built a second time on the
+  // first frame, and anything hidden now compiled again mid-run (the sky's wordmark, the strike's flash). In
+  // parallel where the driver allows it (KHR_parallel_shader_compile), so the loading bar keeps moving.
+  renderer.setRenderTarget(composer.readBuffer);
+  const compiled = renderer.compileAsync(scene, camera);
+  renderer.setRenderTarget(null);
+  await compiled;
   // and every texture goes up to the GPU now (with its mipmaps), not on the frame something first appears:
   // the diyas, rings, coins and firecrackers all first appear on GO, and uploading them there froze the
   // launch for half a second
@@ -352,9 +389,15 @@ function startCountdown(seed) {
   $('hud').classList.add('on'); updateScore(true);
 }
 let countShown = 4, lateShown = 0, snapCam = true;
+// Restart an element's CSS animations from their first frame without a forced layout: the old trick (take the
+// class off, read offsetWidth, put it back) made the browser lay the page out mid-frame, several times on every
+// catch. Reading the animations only brings the styles up to date. (Transitions are left alone.)
+function replay(el, subtree = false) {
+  for (const a of el.getAnimations({ subtree })) if (a instanceof CSSAnimation) { a.currentTime = 0; a.play(); }
+}
 // One big number: the 3-2-1 in the middle of the screen, and the last five seconds high over the sky.
 function popCount(text, kind) {
-  const c = $('count'); c.textContent = text; c.dataset.t = text; c.className = 'count'; void c.offsetWidth; c.className = `count pop ${kind}`;
+  const c = $('count'); c.textContent = text; c.dataset.t = text; c.className = `count pop ${kind}`; replay(c);
 }
 // The callouts: the run's words, one at a time (see .callout in index.html). A bigger one is never cut short by
 // a smaller one inside its first 0.75 s. Each has its tier's colours, a kicker over it and a burst behind it.
@@ -371,9 +414,11 @@ function callout(text, tier, kick = '') {
   for (const s of coSparks) {
     s.style.cssText = `--a:${(Math.random() * 360).toFixed(0)}deg;--r:${(64 + Math.random() * 80).toFixed(0)}px;--l:${(9 + Math.random() * 17).toFixed(0)}px;--dl:${(Math.random() * 0.07).toFixed(2)}s`;
   }
-  coEl.className = 'callout'; void coEl.offsetWidth; coEl.className = `callout on t-${tier}`;
+  coEl.className = `callout on t-${tier}`; replay(coEl, true);
 }
 const pips = n => [1, 2, 3].map(i => `<b class="pip${i <= n ? ' on' : ''}"></b>`).join('');
+// once its word has lifted away, the callout goes idle (its blended layers stop costing the compositor)
+coWord.addEventListener('animationend', e => { if (e.animationName === 'coWord') coEl.classList.remove('on'); });
 function goRun() {
   mode = 'play'; modeT = 0; resetFrames();
   for (const el of $('tips').children) el.classList.remove('on');
@@ -475,13 +520,18 @@ function makeGhat(CZ) {
   }));
   coping.position.set(0, -0.09, -(GHAT_Z - 0.1)); coping.frustumCulled = false; scene.add(coping);
   const R = street.refl;
-  river = new THREE.Mesh(new THREE.CircleGeometry(550, 96), new THREE.ShaderMaterial({
-    uniforms: { uRefl: R.uRefl, uReflMat: R.uReflMat, uReflOn: R.uReflOn, uTime: { value: 0 }, uFogCol: { value: FOG }, uGhat: { value: GHAT_Z + 0.3 } },
+  // The water is a disc 550 m round the far bank's centre, cut straight along the ghat's edge: only the part
+  // beyond the edge is built (it used to be the whole disc, half of it under the street, thrown away pixel by
+  // pixel). In the disc's own plane the edge is the line y = (edge - centre).
+  const yc = CZ + GHAT_Z + 0.3, RR = 550, a0 = Math.asin(yc / RR), xc = Math.sqrt(RR * RR - yc * yc), shore = new THREE.Shape();
+  shore.moveTo(xc, yc); shore.absarc(0, 0, RR, a0, Math.PI - a0, false); shore.lineTo(xc, yc);
+  river = new THREE.Mesh(new THREE.ShapeGeometry(shore, 48), new THREE.ShaderMaterial({
+    uniforms: { uRefl: R.uRefl, uReflMat: R.uReflMat, uReflOn: R.uReflOn, uTime: { value: 0 }, uFogCol: { value: FOG } },
     vertexShader: /* glsl */`
       uniform mat4 uReflMat; varying vec3 vW; varying vec4 vRefl;
       void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vRefl = uReflMat * w; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: /* glsl */`
-      uniform sampler2D uRefl; uniform float uTime, uGhat, uReflOn; uniform vec3 uFogCol; varying vec3 vW; varying vec4 vRefl;
+      uniform sampler2D uRefl; uniform float uTime, uReflOn; uniform vec3 uFogCol; varying vec3 vW; varying vec4 vRefl;
       // The waves, a few octaves of drifting noise (round in the water, so on screen, foreshortened, they break a
       // light into short dashes; stretched across the current they read as stripes), each faded out once its features fall under a few pixels, so the far water never
       // shimmers: out there the river is a dark mirror of long streaks.
@@ -491,7 +541,6 @@ function makeGhat(CZ) {
       float wave(vec2 p, vec2 sc, vec2 fl, float fw) { return (vn(p * sc + fl * uTime) - 0.5) * smoothstep(3.0, 9.0, 1.0 / (sc.y * fw)); }
       float oct(vec2 p, vec2 k, float sp, float fw) { return sin(dot(p, k) + uTime * sp) * smoothstep(3.0, 9.0, 6.2832 / (length(k) * fw)); }
       void main() {
-        if (vW.z > -uGhat) discard;
         vec3 V = normalize(cameraPosition - vW); float g = 1.0 - abs(V.y);
         vec2 p = vW.xz; float fw = max(fwidth(p.y), 1e-4);
         // the slopes across the current break each reflection into dashes; those along it sway them a little
@@ -631,9 +680,9 @@ let popI = 0;
 function popAt(x, y, z, text, cls, reuse) {
   const v = tmp.set(x, y, z).project(camera); if (v.z > 1) return reuse;
   const el = reuse || popEls[popI++ % popEls.length], W = canvas.clientWidth, H = canvas.clientHeight;
-  el.textContent = text; el.className = cls || '';
+  el.textContent = text; el.className = `${cls || ''} go`;
   el.style.left = `${((v.x + 1) / 2) * W}px`; el.style.top = `${((1 - v.y) / 2) * H}px`;
-  void el.offsetWidth; el.className = `${cls || ''} go`;
+  replay(el);
   return el;
 }
 // Catches in quick succession add up in one rising number, "+7", bumping with each catch, instead of piling up
@@ -651,8 +700,8 @@ function showCombo(up) {
   const c = $('combo');
   if (up && run.chain >= 3) {
     const n = $('comboN'); n.textContent = run.chain; n.dataset.t = run.chain;
-    c.className = `combo on${onFire(run) ? ' hot' : run.chain >= 10 ? ' warm' : ''}`;
-    void c.offsetWidth; c.classList.add(run.chain % 5 === 0 ? 'mile' : 'bump');
+    c.className = `combo on${onFire(run) ? ' hot' : run.chain >= 10 ? ' warm' : ''} ${run.chain % 5 === 0 ? 'mile' : 'bump'}`;
+    replay(c, true);
   } else if (!up && c.classList.contains('on')) { c.className = 'combo drop'; }
 }
 let fireT = -1, hurtT = -1, kickT = -1, rushCue = false, rushOn = false, dodgeShown = false, fireBlend = 0;
@@ -660,7 +709,7 @@ let pulseT = 9, cheerT = 9, goldT = 9, launchT = -1;
 const waves = [];
 function updateScore(reset) {
   const el = $('score'); el.textContent = run.score;
-  if (!reset) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+  if (!reset) { el.classList.add('bump'); replay(el); }
 }
 function flameBadge(level) {
   if (S.flame[level]) callout(S.flame[level], `l${level}`, pips(level));
@@ -784,10 +833,23 @@ function restWanted() {
   return (mode === 'attract' && (modeT > 15 || promoOpen)) || (mode === 'result' && count && count.done && modeT > 7);
 }
 addEventListener('pointerdown', () => { if (mode === 'attract') modeT = 0; if (mode === 'result') modeT = Math.min(modeT, 6); }, true);
+// High-refresh screens (many mid-range phones run at 120 Hz). A phone that keeps up is drawn at the full rate,
+// as before. One that keeps missing frames (an uneven 70-90 fps, which the eye reads as judder) is held to a
+// steady 60 for the runs instead, every other refresh: smoother to look at, and cooler over a long shift. The
+// start screen always runs free, so the quality check there measures exactly what it always did. (At 90 Hz
+// every other refresh would be 45 fps, worse than drawing them all, so those never cap.)
+let rafPrev = 0, rafMs = 16.7, rafOdd = false, missRate = 0, cap60 = false;
 function loop(now) {
   requestAnimationFrame(loop);
+  const iv = now - rafPrev; rafPrev = now;
+  if (iv > 3 && iv < 34) rafMs += (iv - rafMs) * 0.05;
+  const high = rafMs < 9.8, capped = high && cap60 && mode !== 'attract';
+  if (high && !capped && !resting && iv < 100) { missRate += ((iv > rafMs * 1.5 ? 1 : 0) - missRate) * 0.03; if (missRate > 0.25) cap60 = true; }
+  if (capped && (rafOdd = !rafOdd)) return;            // (time carries over to the frame that is drawn)
+  // the pause screen covers a still frame: nothing to draw until the player resumes (the debug hooks draw their own)
+  if (paused && !DEBUG) { last = now; return; }
   const want = restWanted();
-  if (want !== resting) { resting = want; buildComposer(); resetFrames(); }
+  if (want !== resting) { resting = want; sizeComposer(); resetFrames(); }
   if (resting && (++restSkip & 1)) return;           // every other frame; the next one carries the time
   const raw = now - last; last = now;
   frameLog[fi] = raw; fi = (fi + 1) % frameLog.length; fcount++;
@@ -1238,12 +1300,13 @@ function renderReflections() {
   // sparks and fireworks are sized in screen pixels: scaled down to the target's, or they bloom into blobs
   const fs = fx.mat.uniforms.uScale, fs0 = fs.value; fs.value *= q.refl;
   renderer.render(scene, reflCam);
+  dropDepth(renderer);
   fs.value = fs0;
   renderer.setRenderTarget(null); renderer.setClearColor(_cc, a); scene.background = bg;
   R.uRefl.value = reflRT.texture; R.uReflOn.value = 1;
 }
 
-addEventListener('resize', () => { camera.aspect = canvas.clientWidth / canvas.clientHeight; camera.updateProjectionMatrix(); buildComposer(); });
+addEventListener('resize', () => { camera.aspect = canvas.clientWidth / canvas.clientHeight; camera.updateProjectionMatrix(); if (composer) sizeComposer(); });
 camera.aspect = canvas.clientWidth / canvas.clientHeight; camera.updateProjectionMatrix();
 
 window.DiyaDash = { CONFIG, frameStats, get state() { return { mode, t: run.t, s: run.s, score: run.score, level: run.level, quality: QUALITY[qi].name }; } };
@@ -1254,6 +1317,7 @@ if (DEBUG) Object.assign(window.DiyaDash, {
   start(seed) { if (mode === 'attract') startCountdown(seed); },
   // freeze the live loop (it keeps drawing) so a frame can be captured exactly where advance() left it
   hold(on = true) { paused = on; },
+  setClock(t) { clock = t; },          // (two builds compared frame by frame need the same clock: the camera's sway follows it)
   advance(seconds, stepDt = 1 / 60) { for (let t = 0; t < seconds; t += stepDt) update(stepDt); render(); },
   bench(n = 30) {
     const gl = renderer.getContext(), px = new Uint8Array(4), ts = [];
@@ -1265,6 +1329,20 @@ if (DEBUG) Object.assign(window.DiyaDash, {
   QUALITY, rebuild() { buildComposer(); },
   passes() { return { bloomPass, gradePass, composer }; }, scene,
   world() { return { street, pools, washes, player, keyLight, camera, fx, triangle, finale, run, river, coping, scene }; },
+  // update and render timed apart, the GPU synced after each render; and the pipeline, to switch parts off
+  benchParts(n = 40) {
+    const gl = renderer.getContext(), px = new Uint8Array(4), u = [], r = [];
+    for (let i = 0; i < n; i++) {
+      const a = performance.now(); update(1 / 60); const b = performance.now(); render(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      u.push(b - a); r.push(performance.now() - b);
+    }
+    const med = x => +x.sort((p, q) => p - q)[x.length >> 1].toFixed(2);
+    return { u: med(u), r: med(r), calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
+  },
+  pipe() { return { composer, bloomPass, gradePass, QUALITY, qi, scene }; },
+  setFused(on) { fusedPost = on; buildComposer(); },
+  setLdr(on) { ldrOut = on; buildComposer(); },
+  renderOnly() { render(); },
   // show a callout as the game would: 1-3 flame levels, 'fire', 'rush', 'go'
   say(k) { if (k >= 1 && k <= 3) flameBadge(k); else if (k === 'fire') callout(S.fire, 'fire', S.fireKick); else if (k === 'rush') callout(S.rush, 'rush', '<img src="assets/brand/total-wordmark.png" alt="TOTAL">'); else callout(S.go, 'go'); },
   // dev: render one frame and post it to the local dev server for inspection

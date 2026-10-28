@@ -71,6 +71,13 @@ Light every panel and the official mark appears in the sky. The score is the pla
 - **First load:** a few extra seconds buy a run with no hitches: every shader is compiled and every texture uploaded to the GPU during loading (including those of things hidden then, like the strike's flash), and every santoor and tumbi note is built ahead. Signs, people and marigold rings are drawn at twice the resolution.
 - **Sound on first open:** browsers allow no sound before the first touch, so the start screen's music begins on the first touch anywhere, and the sound button pulses gently until then.
 - **Battery and heat:** after 15 s untouched on the start screen, and once a prize is shown, the game draws at half rate and lower resolution. A touch wakes it.
+- **Performance (v18), with the picture unchanged:** measured pass by pass with GPU timer queries, then cut only where the image stays the same (the old and new builds rendered the same seeded run frame for frame within 1 level in 255).
+  - The bloom's blend and the tone mapping are one pass (`src/post.js`): one full-screen half-float read and write fewer, which a phone's GPU, short of bandwidth, spends most on. Bloom's blur targets have no depth buffer; the scene's and the reflection's depth is discarded after use instead of being written back to memory; the finished picture's buffer has no depth.
+  - Shaders are compiled at load for the buffer the scene is really drawn into, in parallel where the driver allows: 49 programs, built once (it was 84-94, half of them built again on the first frame or mid-finale). The reflection pass sees switched-off copies of the scene's lights, so the two passes share their programs. Shader error checks run only with `?debug`.
+  - Only what changed goes to the GPU: each instanced system uploads the instances it drew this frame, and a recycled street segment only its own slice (it was every buffer whole, every frame).
+  - Resting and waking resize the pipeline in place (it was rebuilt, leaking the old one's buffers, on the player's first touch). Nothing is drawn under the pause screen. The river is built only beyond the ghat's edge (it was a disc half under the street, thrown away pixel by pixel). No per-spark garbage in the particle system; catches restart their pop and combo animations without forcing a page layout; the start button's shine is compositor-only.
+  - High-refresh phones: one that keeps up runs at its full 120 Hz; one that keeps missing frames is held to a steady 60 in the runs (smoother than an uneven 70-90, and cooler). The start screen always runs free, so the quality check measures exactly what it did.
+  - Tried and rejected for the picture: an 8-bit buffer for the tone-mapped image (the grade's sharpening and contrast drew faint bands in the night sky), half precision in shaders, fewer bloom levels, a lower render resolution.
 - **First open:** the short sounds load first and the start screen shows; the crowd and crackers load behind it. The score is made in the game, so there is no music file: audio is 0.97 MB.
 - **Test hooks:** `?debug` and `?autoplay` work only on `localhost`, so on the live link nobody can bot a win or fast-forward a run.
 
@@ -140,6 +147,7 @@ About 60 draw calls and 150–175k triangles, plus about 20 calls for the reflec
 | `src/main.js` | Renderer, camera, input, flow of a run, adaptive quality |
 | `src/rules.js` | Course layout, catching, flame levels, prize tiers, calibration bot (no 3D, runs in Node) |
 | `src/world.js` | The gali: houses, shops, boards, lamps, jhalars, garlands, rangoli, then the chowk and open ground; 24 m segments that recycle |
+| `src/post.js` | The bloom-and-output pass (one pass for bloom's blend and the tone mapping) and the scene pass that discards its depth after use |
 | `src/props.js` | Modelled props, instanced: the parked scooters; the anaar's clay pot and the chakri's paper coil |
 | `src/diyas.js` | Clay diyas, brass stands, flame shader, light pools, wall washes, target rings |
 | `src/player.js` | The TOTAL gem and its flame |

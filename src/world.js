@@ -22,6 +22,13 @@ const mod = (a, n) => ((a % n) + n) % n;
 const hash = v => { const x = Math.sin(v) * 43758.5453; return x - Math.floor(x); };
 const sm = v => (v <= 0 ? 0 : v >= 1 ? 1 : v * v * (3 - 2 * v));
 
+// Send the GPU only the part of a buffer that changed: three otherwise uploads the whole of it, sized for the
+// busiest moment, every time. (Ranges add up until the upload, which clears them.)
+function upload(attr, item0, items) {
+  if (items <= 0) return;
+  attr.addUpdateRange(item0 * attr.itemSize, items * attr.itemSize); attr.needsUpdate = true;
+}
+
 /* ---------- a small geometry builder: quads and boxes with colours and UVs ---------- */
 class GB {
   constructor(defaultUV) { this.p = []; this.n = []; this.c = []; this.uv = []; this.i = []; this.duv = defaultUV; }
@@ -308,8 +315,8 @@ class SlotMesh {
       v += nv; ii += data.i.length;
     }
     const g = this.mesh.geometry;
-    for (const a of ['position', 'normal', 'color', 'uv']) g.attributes[a].needsUpdate = true;
-    g.index.needsUpdate = true; g.setDrawRange(0, ii);
+    for (const a of ['position', 'normal', 'color', 'uv']) upload(g.attributes[a], 0, v);
+    upload(g.index, 0, ii); g.setDrawRange(0, ii);
   }
 }
 
@@ -521,6 +528,7 @@ export class Street {
     this.lanterns = new THREE.InstancedMesh(lanternGeometry(), new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide }), LANTERNS_PER_SLOT * SLOTS);
     this.lanterns.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(LANTERNS_PER_SLOT * SLOTS * 3), 3).setUsage(THREE.DynamicDrawUsage);
     this.rangoli = makeRangoliMesh(tex.rangoli, RANGOLI_PER_SLOT * SLOTS, this.glow);
+    this.rangoli.mesh.visible = false;      // (no decorative rangoli in the street since v11: kept off, not drawn every frame)
     this.jhalar = makeJhalarMesh(tex.bulb, JHALARS_PER_SLOT * SLOTS, this.glow);
     this.people = makePeopleMesh(tex.people, PEOPLE_PER_SLOT * SLOTS, this.glow, this.slPos, this.slCol);
     this.onSparkle = null;                            // (x, y, z, i): a child's sparkler, drawn by the game's sparks
@@ -789,14 +797,14 @@ export class Street {
       }
     }
     for (; Pp < PEnd; Pp++) this.people.hide(Pp);
-    this.people.flush();
+    this.people.flush(idx * PEOPLE_PER_SLOT, PEOPLE_PER_SLOT);
     // this slot's scooters, each turned a touch off true
     this.scooters.setSlot(idx, decs.flatMap(({ v, open }) => v.decor.scooters.map(c => ({ x: c.x + open, z: c.z - s0, f: c.f, col: c.col, yaw: (hash(c.x * 7.1 + c.z * 3.3) - 0.5) * 0.18 }))).slice(0, SCOOTERS_PER_SLOT));
     // this slot's jhalar
     let J = idx * JHALARS_PER_SLOT; const JEnd = J + JHALARS_PER_SLOT;
     for (const { v, open } of decs) for (const j of v.decor.jhalars) { if (J >= JEnd) break; this.jhalar.set(J++, j.x + open, j.y, j.z - s0, j.w, j.len, j.thr, j.seed, j.th, j.roof); }
     for (; J < JEnd; J++) this.jhalar.hide(J);
-    this.jhalar.flush();
+    this.jhalar.flush(idx * JHALARS_PER_SLOT, JHALARS_PER_SLOT);
     // tangled power lines down the street
     for (let k2 = 0; k2 < 3 && !beyond; k2++) {
       const side = rr() < 0.5 ? -1 : 1, x0 = side * (2.4 + rr() * 0.9), y0 = 7 + rr() * 1.5;
@@ -824,13 +832,13 @@ export class Street {
       }
     }
     for (; F < FEnd; F++) { M.makeScale(0, 0, 0); this.flags.setMatrixAt(F, M); }
-    this.flags.instanceMatrix.needsUpdate = true; this.flags.instanceColor.needsUpdate = true;
+    upload(this.flags.instanceMatrix, idx * FLAGS_PER_SLOT, FLAGS_PER_SLOT); upload(this.flags.instanceColor, idx * FLAGS_PER_SLOT, FLAGS_PER_SLOT);
     for (; u < uEnd; u++) { M.makeScale(0, 0, 0); this.bulbs.setMatrixAt(u, M); this.bulbMeta[u * 4 + 3] = -1; }
     for (; w < wEnd; w++) this.wirePos[w] = 0;
-    this.beads.instanceMatrix.needsUpdate = true; this.beads.instanceColor.needsUpdate = true;
-    this.bulbs.instanceMatrix.needsUpdate = true; this.lanterns.instanceMatrix.needsUpdate = true;
-    this.wires.geometry.attributes.position.needsUpdate = true;
-    this.rangoli.flush();
+    upload(this.beads.instanceMatrix, idx * BEADS_PER_SLOT, BEADS_PER_SLOT); upload(this.beads.instanceColor, idx * BEADS_PER_SLOT, BEADS_PER_SLOT);
+    upload(this.bulbs.instanceMatrix, idx * BULBS_PER_SLOT, BULBS_PER_SLOT); upload(this.lanterns.instanceMatrix, idx * LANTERNS_PER_SLOT, LANTERNS_PER_SLOT);
+    upload(this.wires.geometry.attributes.position, idx * WIRES_PER_SLOT * 2, WIRES_PER_SLOT * 2);
+    this.rangoli.flush(idx * RANGOLI_PER_SLOT, RANGOLI_PER_SLOT);
   }
 }
 
@@ -933,7 +941,7 @@ function makeJhalarMesh(bulbTex, cap, glow) {
       C.set([th.a.r, th.a.g, th.a.b, roof], i * 4); E.set([th.b.r, th.b.g, th.b.b, th.run], i * 4);
     },
     hide(i) { A.set([0, -50, 0, 0], i * 4); B[i * 4 + 1] = 99; },
-    flush() { for (const a of attrs) a.needsUpdate = true; },
+    flush(i0 = 0, n = cap) { for (const a of attrs) upload(a, i0, n); },
   };
 }
 
@@ -1038,7 +1046,7 @@ function makePeopleMesh(atlas, cap, glow, slPos, slCol) {
     mesh, mat, shadow,
     set(i, x, z, s, flip, kind, ph) { A.set([x, z, s, flip], i * 4); B.set([kind, ph], i * 2); },
     hide(i) { A.set([0, 9999, 0, 1], i * 4); },
-    flush() { aA.needsUpdate = true; aB.needsUpdate = true; },
+    flush(i0 = 0, n = cap) { upload(aA, i0, n); upload(aB, i0, n); },
   };
 }
 
@@ -1074,6 +1082,6 @@ function makeRangoliMesh(atlasTex, cap, glow) {
   return {
     mesh, mat,
     set(i, x, z, size, kind, rot) { data.set([x, z, size, 0], i * 4); extra.set([kind, rot], i * 2); },
-    flush() { aD.needsUpdate = true; aE.needsUpdate = true; },
+    flush(i0 = 0, n = cap) { upload(aD, i0, n); upload(aE, i0, n); },
   };
 }

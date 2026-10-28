@@ -46,7 +46,9 @@ export class FX {
   emit(x, y, z, vx, vy, vz, size, r, g, b, life, drag = 2, grav = 0, tw = 0) {
     let i = this.n;
     if (i >= CAP) { i = (Math.random() * CAP) | 0; } else this.n++;
-    this.p.set([x, y, z], i * 3); this.v.set([vx, vy, vz], i * 3); this.rgb.set([r, g, b], i * 3);
+    // (written field by field: no small arrays made and thrown away, hundreds of times a frame at the finale)
+    const o = i * 3;
+    this.p[o] = x; this.p[o + 1] = y; this.p[o + 2] = z; this.v[o] = vx; this.v[o + 1] = vy; this.v[o + 2] = vz; this.rgb[o] = r; this.rgb[o + 1] = g; this.rgb[o + 2] = b;
     this.base[i] = size; this.life[i] = 0; this.max[i] = life; this.drag[i] = drag; this.grav[i] = grav; this.tw[i] = tw;
   }
   sparks(x, y, z, n, hot = 1) {
@@ -138,7 +140,10 @@ export class FX {
       const life = this.life[i] + dt;
       if (life >= this.max[i]) continue;
       if (w !== i) {
-        this.p.copyWithin(w * 3, i * 3, i * 3 + 3); this.v.copyWithin(w * 3, i * 3, i * 3 + 3); this.rgb.copyWithin(w * 3, i * 3, i * 3 + 3);
+        const a3 = w * 3, b3 = i * 3;
+        this.p[a3] = this.p[b3]; this.p[a3 + 1] = this.p[b3 + 1]; this.p[a3 + 2] = this.p[b3 + 2];
+        this.v[a3] = this.v[b3]; this.v[a3 + 1] = this.v[b3 + 1]; this.v[a3 + 2] = this.v[b3 + 2];
+        this.rgb[a3] = this.rgb[b3]; this.rgb[a3 + 1] = this.rgb[b3 + 1]; this.rgb[a3 + 2] = this.rgb[b3 + 2];
         this.base[w] = this.base[i]; this.max[w] = this.max[i]; this.drag[w] = this.drag[i]; this.grav[w] = this.grav[i]; this.tw[w] = this.tw[i];
       }
       this.life[w] = life;
@@ -154,7 +159,10 @@ export class FX {
     }
     this.n = w;
     this.points.geometry.setDrawRange(0, this.n);
-    this.aP.needsUpdate = this.aC.needsUpdate = this.aS.needsUpdate = true;
+    // only the live particles go up to the GPU (they are packed at the front): not the whole 5000 every frame
+    if (this.n || this.wasLive) { const m = Math.max(1, this.n); this.live(this.aP, m); this.live(this.aC, m); this.live(this.aS, m); }
+    this.wasLive = this.n > 0;
   }
+  live(a, m) { a.clearUpdateRanges(); a.addUpdateRange(0, m * a.itemSize); a.needsUpdate = true; }
   clear() { this.n = 0; this.streaks.length = 0; this.rockets.length = 0; }
 }

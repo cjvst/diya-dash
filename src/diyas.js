@@ -80,6 +80,13 @@ const FLAME_FRAG = /* glsl */`
     gl_FragColor = vec4(col * glow * vFog, a * vFog);
   }`;
 
+// Send the GPU only the part of a buffer that changed: three otherwise uploads the whole of it, sized for the
+// busiest moment, every time. (Ranges add up until the upload, which clears them.)
+function upload(attr, item0, items) {
+  if (items <= 0) return;
+  attr.addUpdateRange(item0 * attr.itemSize, items * attr.itemSize); attr.needsUpdate = true;
+}
+
 export class Flames {
   constructor(capacity) {
     const quad = new THREE.PlaneGeometry(1, 1, 1, 1); quad.translate(0, 0.5, 0);
@@ -105,7 +112,7 @@ export class Flames {
   }
   end(time) {
     this.mesh.geometry.instanceCount = this.n;
-    this.aPos.needsUpdate = true; this.aPar.needsUpdate = true;
+    upload(this.aPos, 0, this.n); upload(this.aPar, 0, this.n);
     this.mat.uniforms.uTime.value = time;
   }
 }
@@ -150,7 +157,7 @@ export class Pools {
     this.col[c] = r; this.col[c + 1] = g; this.col[c + 2] = b;
     this.n++;
   }
-  end() { this.mesh.geometry.instanceCount = this.n; this.aPos.needsUpdate = true; this.aCol.needsUpdate = true; }
+  end() { this.mesh.geometry.instanceCount = this.n; upload(this.aPos, 0, this.n); upload(this.aCol, 0, this.n); }
 }
 
 /* ---------------- wall washes: light thrown onto house fronts by lanterns, shops and curtain lights ---------------- */
@@ -188,7 +195,7 @@ export class Washes {
     this.col[o] = r; this.col[o + 1] = g; this.col[o + 2] = b; this.col[o + 3] = height;
     this.n++;
   }
-  end() { this.mesh.geometry.instanceCount = this.n; this.aPos.needsUpdate = true; this.aCol.needsUpdate = true; }
+  end() { this.mesh.geometry.instanceCount = this.n; upload(this.aPos, 0, this.n); upload(this.aCol, 0, this.n); }
 }
 
 /* ---------------- target rings: marigold circles under the gameplay diyas ---------------- */
@@ -227,7 +234,7 @@ export class Rings {
     this.col[o] = r; this.col[o + 1] = g; this.col[o + 2] = b; this.col[o + 3] = a;
     this.n++;
   }
-  end() { this.mesh.geometry.instanceCount = this.n; this.aPos.needsUpdate = true; this.aCol.needsUpdate = true; }
+  end() { this.mesh.geometry.instanceCount = this.n; upload(this.aPos, 0, this.n); upload(this.aCol, 0, this.n); }
 }
 
 /* ---------------- instanced diya sets: clay finishes, brass for gold, wicks, stands ---------------- */
@@ -248,6 +255,8 @@ export class DiyaSet {
     if (stands) { this.stands = new THREE.InstancedMesh(standGeometry(standH), brassMat, capacityPer * 2); this.stands.count = 0; this.stands.frustumCulled = false; }
     this.group = new THREE.Group();
     this.group.add(...this.clay, this.brass, this.wicks); if (this.stands) this.group.add(this.stands);
+    this.meshes = [...this.clay, this.brass, this.wicks, this.stands].filter(Boolean);
+    for (const m of this.meshes) m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);   // (rewritten every frame)
   }
   begin() { for (const m of this.clay) m.count = 0; this.brass.count = 0; this.wicks.count = 0; if (this.stands) this.stands.count = 0; }
   // Place one diya; returns the world position of its wick tip in `out`. grow scales the stand with it (far
@@ -268,6 +277,6 @@ export class DiyaSet {
     return true;
   }
   end() {
-    for (const m of [...this.clay, this.brass, this.wicks, this.stands]) if (m) m.instanceMatrix.needsUpdate = true;
+    for (const m of this.meshes) upload(m.instanceMatrix, 0, m.count);
   }
 }
