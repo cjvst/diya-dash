@@ -21,6 +21,7 @@
   - A screenshot can't be passed off as a new win: its clock has stopped.
 - **When you hand a prize over,** tap **Prize given**. The card is stamped with the time, and today's counts stay right.
 - Tap **Next player** for the next person.
+- **If the game leaves full screen** (a call, a message, switching apps): one tap anywhere puts it back. If a run was going, it waits paused; tap **Resume**.
 - **"Best TOTAL today" on the start screen** gives the queue a score to beat.
 
 ## End of the shift

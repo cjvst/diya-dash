@@ -765,7 +765,24 @@ function buzz(p) {
 }
 let wake = null;
 async function requestWake() { try { if ('wakeLock' in navigator && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) { /* not allowed */ } }
-function tryFullscreen() { const el = document.documentElement; if (document.fullscreenElement || !el.requestFullscreen || !matchMedia('(pointer: coarse)').matches) return; el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {}); }
+// Full screen, always. The browser drops it whenever anyone leaves the tab or the app (a pause, a call, the
+// promoter checking a message), and a page may only ask for it again on a touch. So every touch anywhere asks
+// again if it was lost (Resume, the start screen, the result, a drag in play), and the screen is held upright
+// while it lasts. An app installed to the home screen opens full screen anyway; an iPhone has no full screen for
+// pages at all, so there the home-screen app is the way (PROMOTER-SETUP.md).
+let fsAsking = false;
+function tryFullscreen() {
+  const el = document.documentElement;
+  if (fsAsking || document.fullscreenElement || !el.requestFullscreen || !matchMedia('(pointer: coarse)').matches || matchMedia('(display-mode: fullscreen)').matches) return;
+  // (one request at a time; a browser that never answers must not stop the next touch from asking)
+  fsAsking = true; const done = () => { fsAsking = false; }; setTimeout(done, 1500);
+  el.requestFullscreen({ navigationUI: 'hide' })
+    .then(() => { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('portrait').catch(() => {}); })
+    .catch(() => {})
+    .finally(done);
+}
+// (the touch's release is what the browser counts as the player's gesture; touchend for browsers that differ)
+for (const ev of ['pointerup', 'touchend', 'keydown']) addEventListener(ev, tryFullscreen, { capture: true, passive: true });
 
 $('btnGo').addEventListener('click', () => { if (mode === 'attract' && !promoOpen) startCountdown(); });
 
