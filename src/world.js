@@ -156,7 +156,7 @@ function buildSide(side, act, seed, atlas) {
     fp.box(X + inward * 0.72, 0, z0, X + inward * 0.86, 0.1, z1, col('#8f897e'));
     // Diwali's litter on the stones: red cracker paper, the odd marigold petal, a scrap of white
     for (let k = 0, n = act === 0 ? 10 : 18; k < n; k++) {
-      const lx = X + inward * (0.9 + rd() * rd() * 1.9), lz = z0 - rd() * w, q = rd(), a = rd() * TAU;
+      const lx = X + inward * (0.9 + rd() * 0.32), lz = z0 - rd() * w, q = rd(), a = rd() * TAU;   // (kerb to lane edge only)
       const lc = q < 0.68 ? col(rd() < 0.5 ? '#9e1018' : '#c42226') : q < 0.86 ? col('#e07a00') : col('#cfc6b6');
       // torn strips of cracker paper (long and thin, a little skewed), smaller petals and scraps
       const L = q < 0.68 ? 0.03 + rd() * 0.05 : 0.015 + rd() * 0.02, Wd = L * (0.25 + rd() * 0.3), sk = (rd() - 0.5) * 0.4;
@@ -199,7 +199,10 @@ function buildSide(side, act, seed, atlas) {
     }
     if (cell.shop) {
       const sw = 5.04 * frac, sz0 = zc + sw / 2, sz1 = zc - sw / 2;
-      decor.lamps.push({ side, z: zc, w: sw, shop: true, thr: 0 });     // the shop's light spills onto the street
+      // the shop's light spills onto the street: about half the shops are lit by white tube lights (cool), the
+      // rest by warm bulbs, which with the warm diyas, garlands and lanterns gives the night its warm-cool contrast
+      const cool = rd() < 0.5;
+      decor.lamps.push({ side, z: zc, w: sw, shop: true, thr: 0, cool });
       // raised shop platform with diyas along its edge
       fp.box(X, 0, sz0 + 0.2, X - side * 0.7, 0.3, sz1 - 0.2, col('#6f6a62'));
       const nd = 4 + ((r() * 3) | 0);
@@ -240,7 +243,7 @@ function buildSide(side, act, seed, atlas) {
       toran(decor, X + inward * 0.06, 3.38, sz0, sz1);
       // white tube lights on the wall over the opening, under the awning: the light of every Indian shop
       const [tu0, tu1, tr] = TUBE_CELL, tv0 = 1 - (tr + 0.56) / BOARD_ROWS, tv1 = 1 - (tr + 0.44) / BOARD_ROWS;
-      for (const tz of [zc + sw * 0.22, zc - sw * 0.22]) if (rd() < 0.75) {
+      for (const tz of [zc + sw * 0.22, zc - sw * 0.22]) if (cool && rd() < 0.85) {
         wallQuad(brd, tz + 0.6, tz - 0.6, 2.93, 3.0, 0.05, WHITE, [[tu0, tv0], [tu1, tv0], [tu1, tv1], [tu0, tv1]]);
         fp.box(X, 2.92, tz + 0.64, X + inward * 0.04, 3.01, tz - 0.64, col('#e8e8e2'));
       }
@@ -261,10 +264,12 @@ function buildSide(side, act, seed, atlas) {
       decor.lamps.push({ side, z: zc, w: 2.4, shop: false, thr: 0.04 + 0.5 * hash(zc * 12.9898 + side * 78.233 + seed) });
       const nd = 3 + ((r() * 3) | 0);
       for (let k = 0; k < nd; k++) decor.diyas.push({ x: X + inward * 0.38, y: 0.18, z: zc + 0.95 - (k * 1.9) / Math.max(1, nd - 1), thr: 0.02 + r() * 0.9, f: (r() * 3) | 0, yaw: r() * TAU });
-      if (r() < 0.8) decor.rangolis.push({ x: X + inward * 1.45, z: zc, size: 1.25 + r() * 0.35, kind: (r() * 4) | 0, rot: r() * TAU });
+      // (no rangoli in front of the houses any more: it sat inside the lane and read as one of the diyas'
+      // rings; the random draws stay, so the rest of the street is laid out as before)
+      if (r() < 0.8) { r(); r(); r(); }
       if (act > 0 || r() < 0.6) toran(decor, X + inward * 0.06, 2.72, zc + 0.95, zc - 0.95);
       // a scooter parked beside the doorstep, clear of the rangoli and the step
-      if (rd() < 0.45 && w > 5.6) { const s2 = rd() < 0.5 ? 1 : -1; scooter(fp, X + inward * 1.25, zc + s2 * (2.05 + rd() * 0.5), rd() < 0.5 ? 1 : -1, SCOOTER_COLS[(rd() * SCOOTER_COLS.length) | 0]); }
+      if (rd() < 0.3 && w > 5.6) { const s2 = rd() < 0.5 ? 1 : -1; scooter(fp, X + inward * 0.98, zc + s2 * (2.05 + rd() * 0.5), rd() < 0.5 ? 1 : -1, SCOOTER_COLS[(rd() * SCOOTER_COLS.length) | 0]); }
     }
     z = z1;
   }
@@ -324,6 +329,33 @@ const FLAG_COLS = ['#ff8a1a', '#f2efe6', '#1f9a4a', '#ff4f9a', '#ffd23a', '#2f7c
 // Lamps that light the house fronts per pixel: the nearest SL_N shop lights, door lamps and curtain lights.
 // Further down the street the rest become soft washes on their own wall, cross-faded so none pops on.
 const SL_N = 16;
+// The same lamps, for everything else in the street: garlands, bunting, boards, diyas and their stands,
+// firecrackers. Wrapped diffuse (round things glow all round the side that faces a lamp, the way a marigold
+// garland does under a shop light) and, on metal, a glint. Without this only the house fronts saw the lamps,
+// and everything hung on them went dark whenever the night was made darker.
+const SL_LIGHT = /* glsl */`
+  {
+    vec3 sn = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz ), sV = normalize( cameraPosition - vSLW ), sAcc = vec3( 0.0 ), sSpec = vec3( 0.0 );
+    #ifdef STANDARD
+      float sShin = exp2( 10.0 * ( 1.0 - material.roughness ) + 1.0 );
+    #endif
+    for ( int i = 0; i < ${SL_N}; i ++ ) {
+      vec3 d = uSLPos[ i ].xyz - vSLW; float dd = dot( d, d ) + 0.05;
+      float w = 1.0 - dd * uSLPos[ i ].w;
+      if ( w <= 0.0 ) continue;
+      w *= 1.0 - 0.7 * smoothstep( 0.8, 3.0, -d.y );
+      vec3 L = d * inversesqrt( dd ), lc = uSLCol[ i ].rgb * ( w * w / ( 1.0 + dd * uSLCol[ i ].w ) );
+      float cl = dot( sn, L );
+      sAcc += lc * ( max( cl, 0.0 ) * 0.7 + 0.3 * smoothstep( -0.6, 0.6, cl ) );
+      #ifdef STANDARD
+        sSpec += lc * pow( max( dot( sn, normalize( L + sV ) ), 0.0 ), sShin ) * ( sShin + 2.0 ) * 0.125;
+      #endif
+    }
+    reflectedLight.directDiffuse += sAcc * material.diffuseColor;
+    #ifdef STANDARD
+      reflectedLight.directSpecular += sSpec * material.specularColor;
+    #endif
+  }`;
 
 export class Street {
   constructor(scene, tex) {
@@ -463,7 +495,7 @@ export class Street {
     this.lanterns.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(LANTERNS_PER_SLOT * SLOTS * 3), 3).setUsage(THREE.DynamicDrawUsage);
     this.rangoli = makeRangoliMesh(tex.rangoli, RANGOLI_PER_SLOT * SLOTS, this.glow);
     this.jhalar = makeJhalarMesh(tex.bulb, JHALARS_PER_SLOT * SLOTS, this.glow);
-    this.people = makePeopleMesh(tex.people, PEOPLE_PER_SLOT * SLOTS, this.glow);
+    this.people = makePeopleMesh(tex.people, PEOPLE_PER_SLOT * SLOTS, this.glow, this.slPos, this.slCol);
     this.onSparkle = null;                            // (x, y, z, i): a child's sparkler, drawn by the game's sparks
     for (const m of [this.beads, this.bulbs, this.lanterns]) { m.frustumCulled = false; scene.add(m); }
     scene.add(this.rangoli.mesh, this.jhalar.mesh, this.people.mesh);
@@ -480,6 +512,25 @@ export class Street {
     this.wires = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x0a0909 })); this.wires.frustumCulled = false;
     scene.add(this.wires);
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._v = new THREE.Vector3(); this._s = new THREE.Vector3(1, 1, 1); this._up = new THREE.Vector3(0, 1, 0);
+    for (const m of [this.brdMat, this.beads.material, this.flags.material]) this.light(m);
+  }
+
+  // Light a material by the street's lamps, the way the house fronts are lit (instanced meshes included).
+  light(mat) {
+    const slPos = this.slPos, slCol = this.slCol;
+    mat.onBeforeCompile = sh => {
+      sh.uniforms.uSLPos = { value: slPos }; sh.uniforms.uSLCol = { value: slCol };
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vSLW;')
+        .replace('#include <project_vertex>', `#include <project_vertex>
+          { vec4 sw = vec4( transformed, 1.0 );
+            #ifdef USE_INSTANCING
+              sw = instanceMatrix * sw;
+            #endif
+            vSLW = ( modelMatrix * sw ).xyz; }`);
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform vec4 uSLPos[ ${SL_N} ]; uniform vec4 uSLCol[ ${SL_N} ]; varying vec3 vSLW;`)
+        .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n' + SL_LIGHT);
+    };
+    mat.needsUpdate = true;
   }
 
   // Keep the segments that cover [s - 12, s + AHEAD] in place, and animate what lives in them.
@@ -530,7 +581,8 @@ export class Street {
         const inw = -(L.side || 0);
         if (L.k === 0) {                      // shop: always open, brighter as the street comes alive
           L.on = 0.85 + 0.3 * g; L.d = d; cand.push(L);
-          pools.push(L.x + inw * 1.9, 0.011, z, Math.max(4.4, L.w * 1.1), 0.44 * L.on, 0.26 * L.on, 0.1 * L.on);
+          if (L.cool) pools.push(L.x + inw * 1.9, 0.011, z, Math.max(4.4, L.w * 1.1), 0.3 * L.on, 0.32 * L.on, 0.36 * L.on);
+          else pools.push(L.x + inw * 1.9, 0.011, z, Math.max(4.4, L.w * 1.1), 0.44 * L.on, 0.26 * L.on, 0.1 * L.on);
         } else if (L.k === 4) {               // door lamp
           L.on = on01((g - L.thr) / 0.08); if (L.on <= 0) continue;
           L.d = d; cand.push(L);
@@ -555,7 +607,8 @@ export class Street {
       if (!L) { P.set(0, -50, 0, 1); C.set(0, 0, 0, 1); continue; }
       const inw = -L.side, k = L.on * sm((this.slLim - L.d) / 14) * sm((L.d + 10) / 4);
       L.real = k / L.on;
-      if (L.k === 0) { P.set(L.x + inw * 1.0, 2.5, L.z, 1 / 144); C.set(2.6 * k, 1.62 * k, 0.8 * k, 1 / 9); }
+      if (L.k === 0 && L.cool) { P.set(L.x + inw * 1.0, 2.5, L.z, 1 / 144); C.set(1.75 * k, 1.95 * k, 2.25 * k, 1 / 9); }
+      else if (L.k === 0) { P.set(L.x + inw * 1.0, 2.5, L.z, 1 / 144); C.set(2.6 * k, 1.62 * k, 0.8 * k, 1 / 9); }
       else { P.set(L.x + inw * 0.45, 3.0, L.z, 1 / 49); C.set(1.7 * k, 1.15 * k, 0.62 * k, 1 / 2); }
     }
     for (let i = SL_N; i < cand.length; i++) cand[i].real = 0;
@@ -563,7 +616,8 @@ export class Street {
     for (const L of cand) {
       const k = L.on * (1 - L.real); if (k <= 0.01 || L.d < 12) continue;
       const inw = -L.side;
-      if (L.k === 0) washes.push(L.x + inw * 0.05, 2.3, L.z, L.w * 1.3, 4.2, 0.5 * k, 0.31 * k, 0.15 * k);
+      if (L.k === 0 && L.cool) washes.push(L.x + inw * 0.05, 2.3, L.z, L.w * 1.3, 4.2, 0.34 * k, 0.37 * k, 0.42 * k);
+      else if (L.k === 0) washes.push(L.x + inw * 0.05, 2.3, L.z, L.w * 1.3, 4.2, 0.5 * k, 0.31 * k, 0.15 * k);
       else washes.push(L.x + inw * 0.05, 2.6, L.z, 3.2, 3.0, 0.34 * k, 0.22 * k, 0.11 * k);
     }
     // doorstep diyas, placed every frame from the active slots
@@ -618,7 +672,7 @@ export class Street {
     // light sources of this slot, turned into pools and wall washes every frame in update()
     sl.lights = [];
     for (const { v, open } of decs) {
-      for (const lp of v.decor.lamps) sl.lights.push({ k: lp.shop ? 0 : 4, side: lp.side, x: lp.side * FRONT_X + open, z: lp.z - s0, w: lp.w, thr: lp.thr });
+      for (const lp of v.decor.lamps) sl.lights.push({ k: lp.shop ? 0 : 4, side: lp.side, x: lp.side * FRONT_X + open, z: lp.z - s0, w: lp.w, thr: lp.thr, cool: !!lp.cool });
       for (const d of v.decor.lanterns) {
         const c = LANTERN_COLS[mod(d.kind + k, LANTERN_COLS.length)];
         sl.lights.push({ k: 1, side: d.side, x: d.side * FRONT_X + open, lx: d.x + open, y: d.y, z: d.z - s0, r: c.r, g: c.g, b: c.b, thr: d.thr });
@@ -796,7 +850,7 @@ function makeJhalarMesh(bulbTex, cap, glow) {
 
 // People: upright cut-outs from an 8-figure silhouette atlas, always turned to face the camera, swaying a
 // little as people do. Back-lit dark figures, their rim brighter as the street lights up; fogged like the rest.
-function makePeopleMesh(atlas, cap, glow) {
+function makePeopleMesh(atlas, cap, glow, slPos, slCol) {
   const plane = new THREE.PlaneGeometry(1, 1); plane.translate(0, 0.5, 0);
   const g = new THREE.InstancedBufferGeometry();
   g.index = plane.index; g.setAttribute('position', plane.attributes.position); g.setAttribute('uv', plane.attributes.uv);
@@ -804,10 +858,11 @@ function makePeopleMesh(atlas, cap, glow) {
   const aA = new THREE.InstancedBufferAttribute(A, 4), aB = new THREE.InstancedBufferAttribute(B, 2);
   g.setAttribute('aA', aA); g.setAttribute('aB', aB); g.instanceCount = cap;
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uTex: { value: atlas }, uGlow: glow, uTime: { value: 0 }, uFog: { value: 0.0135 }, uFogCol: { value: new THREE.Color() }, uCheer: { value: 0 }, uPlayerZ: { value: 0 } },
+    uniforms: { uTex: { value: atlas }, uGlow: glow, uTime: { value: 0 }, uFog: { value: 0.0135 }, uFogCol: { value: new THREE.Color() }, uCheer: { value: 0 }, uPlayerZ: { value: 0 },
+      uSLPos: { value: slPos }, uSLCol: { value: slCol } },
     vertexShader: /* glsl */`
       attribute vec4 aA; attribute vec2 aB;            // x, z, scale, mirror | figure, sway phase
-      uniform float uTime, uFog, uCheer, uPlayerZ; varying vec2 vUv; varying float vF;
+      uniform float uTime, uFog, uCheer, uPlayerZ; varying vec2 vUv; varying float vF; varying vec3 vW;
       void main() {
         vec2 to = cameraPosition.xz - aA.xy; vec2 right = normalize(vec2(to.y, -to.x));
         float H = 1.7 * aA.z, W = 0.85 * aA.z;
@@ -818,15 +873,23 @@ function makePeopleMesh(atlas, cap, glow) {
         float hop = ex > 0.35 ? abs(sin(uTime * 8.5 + aB.y * 3.0)) * 0.12 * aA.z : 0.0;
         float sway = sin(uTime * (1.3 + ex * 4.0) + aB.y) * (0.03 + ex * 0.04) * position.y;
         vec3 p = vec3(aA.x, hop, aA.y) + vec3(right.x, 0.0, right.y) * (position.x * W + sway) + vec3(0.0, position.y * H, 0.0);
-        vec4 mv = viewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
+        vec4 mv = viewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv; vW = p;
         vUv = vec2(((aA.w < 0.0 ? 1.0 - uv.x : uv.x) + aB.x + (ex > 0.35 ? 8.0 : 0.0)) / 16.0, uv.y);
         float d = -mv.z; vF = exp(-uFog * uFog * d * d);
       }`,
     fragmentShader: /* glsl */`
-      uniform sampler2D uTex; uniform float uGlow; uniform vec3 uFogCol; varying vec2 vUv; varying float vF;
+      uniform sampler2D uTex; uniform float uGlow; uniform vec3 uFogCol; varying vec2 vUv; varying float vF; varying vec3 vW;
+      uniform vec4 uSLPos[ ${SL_N} ]; uniform vec4 uSLCol[ ${SL_N} ];
       void main() {
         vec4 t = texture2D(uTex, vUv); if (t.a < 0.5) discard;
-        gl_FragColor = vec4(mix(uFogCol, t.rgb * (0.75 + 0.5 * uGlow), vF), 1.0);
+        // the street's lamps on the figure, on the side that faces the street (wrapped: clothes are soft)
+        vec3 n = vec3(-sign(vW.x), 0.0, 0.0), acc = vec3(0.0);
+        for (int i = 0; i < ${SL_N}; i++) {
+          vec3 d = uSLPos[i].xyz - vW; float dd = dot(d, d) + 0.05, w = 1.0 - dd * uSLPos[i].w;
+          if (w <= 0.0) continue;
+          acc += uSLCol[i].rgb * (w * w / (1.0 + dd * uSLCol[i].w)) * (0.45 + 0.55 * max(dot(n, d * inversesqrt(dd)), 0.0));
+        }
+        gl_FragColor = vec4(mix(uFogCol, t.rgb * (0.5 + 0.3 * uGlow + acc * 0.9), vF), 1.0);
         #include <colorspace_fragment>
       }`,
   });

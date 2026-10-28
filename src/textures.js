@@ -268,7 +268,8 @@ export const BOARD_ROWS = 8;
 // rows 6 and 7 are halves: projecting signs (PAAN, CHAI, MEDICAL) and a tube light's glow. [u0, u1, row]
 export const SIGN_CELLS = [[0, 0.5, 6], [0.5, 1, 6], [0, 0.5, 7]], TUBE_CELL = [0.55, 0.95, 7];
 export function makeBoardAtlas(wordmark, triangle, aniso) {
-  const W = 1024, RH = 160, c0 = mk(W, RH * BOARD_ROWS), c = c0.getContext('2d');
+  // (drawn at twice the size it is laid out in, so the signs stay sharp up close)
+  const W = 1024, RH = 160, c0 = mk(W * 2, RH * BOARD_ROWS * 2), c = c0.getContext('2d'); c.scale(2, 2);
   const white = recolor(wordmark, '#ffffff');
   const board = (row, bg, fn) => { const y = row * RH; c.save(); c.translate(0, y); c.beginPath(); c.rect(0, 0, W, RH); c.clip(); bg(); fn(); c.restore(); };
   const logo = (img, x, y, h) => c.drawImage(img, x, y, (h * img.width) / img.height, h);
@@ -457,7 +458,7 @@ export function makeSkyline() {
 // 0 man in a kurta, 1 woman in a saree, 2 man waving, 3 woman with a puja thali, 4 elderly man with a stick,
 // 5 girl in a lehenga, 6 boy holding out a sparkler, 7 a couple.
 export function makePeopleAtlas() {
-  const CW = 128, CH = 256, c0 = mk(CW * 16, CH), c = c0.getContext('2d');
+  const CW = 128, CH = 256, c0 = mk(CW * 16 * 2, CH * 2), c = c0.getContext('2d'); c.scale(2, 2);   // (at twice the size, for crisp figures)
   const RIM = 'rgba(255,176,96,0.95)', SKIN = '#1c1318', HAIR = '#0d0a0e';
   let rim = false;                                   // the first pass paints every shape in the rim colour
   const col = k => (rim ? RIM : k);
@@ -541,7 +542,7 @@ export function makeBulbTile() {
 // A ring of marigold heads on a thin wash of rangoli powder with a dark rim. The flowers carry the target, so
 // the powder can stay translucent and the stones show through it: laid on the street, not a sticker over it.
 export function makeRingTexture() {
-  const S = 256, c0 = mk(S, S), c = c0.getContext('2d'), r = mulberry32(77), h = S / 2;
+  const S = 256, c0 = mk(S * 2, S * 2), c = c0.getContext('2d'), r = mulberry32(77), h = S / 2; c.scale(2, 2);   // (twice the size: crisp marigolds up close)
   c.translate(h, h);
   c.beginPath(); c.arc(0, 0, h * 0.96, 0, TAU); c.fillStyle = 'rgba(30,12,4,.5)'; c.fill();            // dark rim for contrast on light stone
   const g = c.createRadialGradient(0, 0, h * 0.1, 0, 0, h * 0.88);

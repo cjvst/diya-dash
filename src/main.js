@@ -249,6 +249,11 @@ async function boot() {
   // the light sources, which the reflection camera sees as well
   for (const o of [street.bulbs, street.lanterns, street.jhalar.mesh, flames.mesh, washes.mesh, triangle.group, triangle.flash, player.root, tokenMesh]) o.traverse(c => c.layers.enable(REFL));
   for (const sl of street.slots) sl.brd.mesh.layers.enable(REFL);
+  triangle.word.layers.disable(REFL);   // (mirrored right under itself, the wordmark read as garbled text)
+  // one lamp model for the whole street: the shop and door lamps light the diyas, their brass stands (a glint
+  // on the metal) and the firecrackers too, not only the house fronts
+  for (const set of [gameDiyas, decorDiyas]) for (const m of [...set.clay, set.wicks]) street.light(m.material);
+  for (const m of [brass, anaarMesh.material, chakriMesh.material]) street.light(m);
   street.rangoli.mat.uniforms.uFogCol.value.copy(FOG); street.people.mat.uniforms.uFogCol.value.copy(FOG);
   // a child's sparkler: a fizz of tiny white-gold sparks and a hot point of light
   street.onSparkle = (x, y, z) => {
@@ -274,9 +279,24 @@ async function boot() {
   street.onIgnite = (x, y, z) => fx.sparks(x, y + 0.1, z, 5, 1.3);
   // the triangle is far off in the sky, but its bell should ring as if it were just over the rooftops
   fx.onArrive = s => { const ids = Array.isArray(s.payload) ? s.payload : [s.payload]; for (const i of ids) triangle.light(i); sound.atDistance('bell', 26, 0, 1.2, 0.9 + (ids[0] % 5) * 0.05); };
+  // A few extra seconds on the first load buy a run with no hitches: every shader is compiled now, including
+  // those of things hidden at this moment (the sky's wordmark, the strike's flash, the triangle's mark), which
+  // would otherwise compile in the middle of a run, and every santoor and tumbi note is built ahead.
+  street.update(0, 0, flames, pools, decorDiyas, washes);
+  const hidden = []; scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+  renderer.compile(scene, camera);
+  // and every texture goes up to the GPU now (with its mipmaps), not on the frame something first appears:
+  // the diyas, rings, coins and firecrackers all first appear on GO, and uploading them there froze the
+  // launch for half a second
+  const texs = new Set();
+  scene.traverse(o => { for (const m of [].concat(o.material || [])) {
+    for (const k of ['map', 'emissiveMap', 'bumpMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'alphaMap', 'envMap']) if (m[k] && m[k].isTexture) texs.add(m[k]);
+    if (m.uniforms) for (const u of Object.values(m.uniforms)) if (u && u.value && u.value.isTexture) texs.add(u.value);
+  } });
+  for (const t of texs) renderer.initTexture(t);
+  for (const o of hidden) o.visible = false;
+  sound.prewarm();
   progress(1);
-  // warm up shaders before the first real frame
-  street.update(0, 0, flames, pools, decorDiyas, washes); renderer.compile(scene, camera);
   toAttract(true);
   update(1 / 60); render();            // place the camera and the street before anything is shown
   $('loading').classList.add('gone');
@@ -900,9 +920,12 @@ function drawCourse(ps) {
     const d = c[i], ahead = d.s - ps;
     if (ahead > 72) break;
     if (ahead < -9) continue;
-    const z = -d.s, scale = d.gold ? 2.35 : 2.1, pulse = 0.5 + 0.5 * Math.sin(clock * 7 + d.i);
+    // far diyas are drawn up to 1.75 times larger, so a lamp still reads as a lamp 45 m down the street; by the
+    // time one is close enough to aim at it is back to its true size
+    const far = mode === 'play' ? clamp((ahead - 10) / 34, 0, 1) : 0, grow = 1 + far * 0.75;
+    const z = -d.s, scale = (d.gold ? 2.35 : 2.1) * grow, pulse = 0.5 + 0.5 * Math.sin(clock * 7 + d.i);
     if (d.gold && !d.missed) tokens = drawToken(d, z, tokens);
-    gameDiyas.add(d.x, 0, z, -1.2 + ((d.i * 0.618) % 1) * 0.6, scale, d.i % 3, d.gold, wick, true);
+    gameDiyas.add(d.x, 0, z, -1.2 + ((d.i * 0.618) % 1) * 0.6, scale, d.i % 3, d.gold, wick, true, grow);
     const ringSize = d.gold ? 1.95 : 1.6;
     // behind the gem, passing under the lens, a diya's ring and pool fade away: that close they would fill the
     // bottom of the screen with a blurred orange disc
@@ -918,14 +941,17 @@ function drawCourse(ps) {
       rings.push(d.x, 0.018, z, ringSize * (1 + flash * 0.25), 1.1 + flash, 0.92 + flash * 0.6, 0.48 + flash * 0.4, behind);
       if (lights < diyaLights.length && ahead > -7) { const l = diyaLights[lights++]; l.position.set(wick.x, wick.y + 0.35, wick.z); l.intensity = 2.6 * (0.9 + 0.1 * Math.sin(clock * 15 + d.i)); }
     } else {
-      // an ember waits on the wick; ring and ember brighten when the flame is lined up to catch it
+      // A waiting diya burns with a small steady flame: the flame is what makes a lamp read as a lamp from far
+      // off. Lined up to catch it, flame and ring brighten; caught, it flares into the big flame; missed, its
+      // flame goes out. The ring marks the aim close by and fades into the street further off, so down the
+      // road it is the lamps you see, not yellow discs.
       const reach = REACH[run.level];
       const aim = mode === 'play' && ahead > 0 && ahead < 14 && Math.abs(d.x - run.x) < reach ? 1 : 0;
-      const fadeMiss = d.missed ? clamp(1 - (clock - d.missAt) / 0.5, 0, 1) : 1;
-      flames.push(wick.x, wick.y - 0.01, wick.z, (0.15 + aim * 0.05) * fadeMiss, d.i * 1.37, (0.5 + aim * 0.4 * pulse) * Math.max(fadeMiss, 0.15));
+      const fadeMiss = d.missed ? clamp(1 - (clock - d.missAt) / 0.5, 0, 1) : 1, rk = 1 - far * 0.55;
+      flames.push(wick.x, wick.y - 0.01, wick.z, (0.24 + aim * 0.06) * fadeMiss * grow, d.i * 1.37, (1.05 + aim * 0.35 * pulse) * fadeMiss);
       if (d.missed) rings.push(d.x, 0.018, z, ringSize, 0.45, 0.42, 0.42, 0.7 * behind);
       else if (aim) rings.push(d.x, 0.018, z, ringSize * 1.12, 1.3 + 0.2 * pulse, 1.15 + 0.15 * pulse, 0.8, 1);
-      else rings.push(d.x, 0.018, z, ringSize, 0.85 + 0.15 * pulse, 0.78 + 0.12 * pulse, 0.7, 1);
+      else rings.push(d.x, 0.018, z, ringSize, (0.85 + 0.15 * pulse) * rk, (0.78 + 0.12 * pulse) * rk, 0.7 * rk, 0.55 + 0.45 * rk);
       if (d.gold && !d.missed) pools.push(d.x, 0.012, z, 2.4, 0.3 + 0.12 * pulse, 0.2, 0.04);
     }
   }

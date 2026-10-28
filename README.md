@@ -8,6 +8,7 @@ A 30-second mobile web game for TOTAL sampling activations. You carry the TOTAL 
 
 Light every panel and the official mark appears in the sky. The score is the player's TOTAL: "TOTAL 82 diyas lit".
 
+- **Reading the path:** every waiting diya burns with a small steady flame (the flame is what makes a lamp read as a lamp from far off), its clay glows warm, and far ones are drawn up to 1.75 times larger so they keep their shape 45 m down the street. Caught, it flares into the big flame; missed, its flame goes out. Its marigold ring marks the aim close by and fades further off, so down the road you see lamps, not yellow discs. The lane itself is kept clear: no decorative rangoli on it, scooters against the kerb, litter only at the edges.
 - **Play:** drag anywhere and the TOTAL gem follows your finger 1:1. A streak grows your flame (wider reach, side flames, "Mahajyoti"), and a miss shrinks it. Golden diyas count 3. Three acts: dark gali, bazaar, festival chowk.
 - **Adrenaline:**
   - **On Fire:** every catch fills the Fire meter. When it's full, the flame burns white-hot for 5 seconds: points double, the catch widens, the lens and screen edges flare, and the music goes double-time.
@@ -20,6 +21,7 @@ Light every panel and the official mark appears in the sky. The score is the pla
   - String lights, lanterns, diyas and your flame add the rest.
   - The sky triangle casts its own warm light as it fills.
   - Lamps sit under awnings, so upper floors stay dark and their lit windows (a third of the homes from the start, Diwali-style) show.
+  - **One lamp model for the whole street:** the shop and door lamps light everything the same way: house fronts, garlands, bunting, boards, diyas and their brass stands (with a glint on the metal), firecrackers and the people (on the side that faces the street). Round things like marigolds take the light wrapped, so a garland glows under its shop's lamp. About half the shops are lit by white tube lights and half by warm bulbs: the warm-cool contrast, with the warm diyas, garlands and lanterns, is what makes the night rich rather than one orange.
   - A filmic grade with a gentle S-curve keeps the night a night, even On Fire, whose screen edges close in and burn at the rim; shadows stay a deep blue, never dead black.
 
   - **Reflections:** a freshly washed street, as every Diwali morning has one. Each frame a camera mirrored in the ground renders just the light sources (bulbs, lanterns, flames, boards, fireworks, the gem, the sky triangle) into a small target, and the stones sample it: streaked down the screen, broken up by the paving joints and by wet and dry patches, stronger at a glancing angle. The polished chowk mirrors the TOTAL triangle and the comet's strike. This is a planar reflection limited to the emitters, a few milliseconds where full screen-space reflections would cost far more on a phone.
@@ -64,6 +66,7 @@ Light every panel and the official mark appears in the sky. The score is the pla
   Everything is stored on the phone only (`src/stall.js`). The printable promoter sheet is `PROMOTER-SETUP.md`.
 - **Brand in play:** every golden diya carries a minted gold coin, floating above its flame: a real 3D coin in metallic PBR (polished rim, ring of beads, brushed field, reeded edge) lit by its own jeweller's light box, with the official TOTAL triangle set into it in its own colours as glossy enamel behind a raised bezel, as large as the coin allows. A coin, not a triangle, so it never reads as a second player gem in the rush's golden lanes. The sky's wordmark appears as the gem comes out into the chowk.
 - **Life in the street:** silhouetted customers and shopkeepers in the lit shop fronts, families at their doors, and children waving real sparklers.
+- **First load:** a few extra seconds buy a run with no hitches: every shader is compiled and every texture uploaded to the GPU during loading (including those of things hidden then, like the strike's flash), and every santoor and tumbi note is built ahead. Signs, people and marigold rings are drawn at twice the resolution.
 - **Sound on first open:** browsers allow no sound before the first touch, so the start screen's music begins on the first touch anywhere, and the sound button pulses gently until then.
 - **Battery and heat:** after 15 s untouched on the start screen, and once a prize is shown, the game draws at half rate and lower resolution. A touch wakes it.
 - **First open:** the short sounds load first and the start screen shows; the crowd and crackers load behind it. The score is made in the game, so there is no music file: audio is 0.97 MB.

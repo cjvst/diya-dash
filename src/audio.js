@@ -268,6 +268,17 @@ export class Sound {
     this.pluck('dead', BASS[ch] + 12 + key, t, 0.55, pan);
   }
 
+  // every plucked note the score can play, built before the first run so no catch waits on one
+  prewarm() {
+    if (!this.ctx) return;
+    for (const key of [0, LIFT]) for (let ch = 0; ch < 4; ch++) {
+      const root = LADDER_ROOT[ch] + key;
+      for (const o of [0, 4, 7, 12, 16, 19, 24, 28, 31, 36]) this.pluckBuf(root + o, 'santoor');
+      for (const o of TUMBI) if (o !== null) this.pluckBuf(root + o, 'tumbi');
+      this.pluckBuf(BASS[ch] + 12 + key, 'dead');
+    }
+  }
+
   /* ---------- files ---------- */
   // names: which files to load now (default all); called again later for the rest
   async load(onProgress, names = Object.keys(this.manifest)) {

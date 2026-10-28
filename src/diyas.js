@@ -237,7 +237,8 @@ export class DiyaSet {
   constructor(capacityPer, finishes, brassMat, { stands = false, standH = 0.5, seg = 36 } = {}) {
     const geo = diyaGeometry(seg);
     this.clay = finishes.map(map => {
-      const m = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ map }), capacityPer);
+      // (the clay glows a little in its own colours, as a bowl does by its flame, so it never reads as a black cup)
+      const m = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ map, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.3 }), capacityPer);
       m.count = 0; m.frustumCulled = false; return m;
     });
     this.brass = new THREE.InstancedMesh(geo, brassMat, Math.max(8, capacityPer >> 2)); this.brass.count = 0; this.brass.frustumCulled = false;
@@ -249,16 +250,17 @@ export class DiyaSet {
     this.group.add(...this.clay, this.brass, this.wicks); if (this.stands) this.group.add(this.stands);
   }
   begin() { for (const m of this.clay) m.count = 0; this.brass.count = 0; this.wicks.count = 0; if (this.stands) this.stands.count = 0; }
-  // Place one diya; returns the world position of its wick tip in `out`.
-  add(x, y, z, yaw, scale, finish, gold, out, onStand = false) {
+  // Place one diya; returns the world position of its wick tip in `out`. grow scales the stand with it (far
+  // diyas are drawn larger so they read at a distance).
+  add(x, y, z, yaw, scale, finish, gold, out, onStand = false, grow = 1) {
     const mesh = gold ? this.brass : this.clay[finish % this.clay.length];
     if (mesh.count >= mesh.instanceMatrix.count) return false;
-    const baseY = onStand && this.stands ? y + this.standH : y;
+    const baseY = onStand && this.stands ? y + this.standH * grow : y;
     if (onStand && this.stands && this.stands.count < this.stands.instanceMatrix.count) {
-      _m.compose(_p.set(x, y, z), _q.identity(), _s.set(gold ? 1.15 : 1, gold ? 1.15 : 1, gold ? 1.15 : 1));
+      _m.compose(_p.set(x, y, z), _q.identity(), _s.setScalar((gold ? 1.15 : 1) * grow));
       this.stands.setMatrixAt(this.stands.count++, _m);
     }
-    _q.setFromEuler(_e.set(0, yaw, 0)); _s.setScalar(scale); _p.set(x, baseY + (onStand ? (gold ? 0.075 : 0) : 0), z);
+    _q.setFromEuler(_e.set(0, yaw, 0)); _s.setScalar(scale); _p.set(x, baseY + (onStand ? (gold ? 0.075 * grow : 0) : 0), z);
     _m.compose(_p, _q, _s);
     mesh.setMatrixAt(mesh.count++, _m);
     this.wicks.setMatrixAt(this.wicks.count++, _m);
