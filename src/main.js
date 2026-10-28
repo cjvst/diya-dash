@@ -12,7 +12,7 @@ import { Flames, Pools, Washes, Rings, DiyaSet } from './diyas.js';
 import { FX } from './fx.js';
 import { TotalTriangle, PANELS } from './triangle.js';
 import { Player } from './player.js';
-import { Sound } from './audio.js';
+import { Sound, COUNT_STEP } from './audio.js';
 import { S } from './i18n.js';
 import { stall, clockText, TIER_KEYS } from './stall.js';
 
@@ -78,10 +78,10 @@ function buildComposer() {
   // the grade, on the display image: cool night shadows that never go to dead black (they would vanish
   // in sunlight), warm lamplit highlights, a touch more colour, a light vignette and film grain
   gradePass = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uFade: { value: 0 }, uFlash: { value: 0 }, uSpeed: { value: 0 }, uFever: { value: 0 }, uHurt: { value: 0 }, uAspect: { value: W / H } },
+    uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uFade: { value: 0 }, uFlash: { value: 0 }, uSpeed: { value: 0 }, uFever: { value: 0 }, uHurt: { value: 0 }, uBlur: { value: 0 }, uAspect: { value: W / H } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: /* glsl */`
-      uniform sampler2D tDiffuse; uniform float uTime; uniform float uFade; uniform float uFlash; uniform float uSpeed; uniform float uFever; uniform float uHurt; uniform float uAspect;
+      uniform sampler2D tDiffuse; uniform float uTime; uniform float uFade; uniform float uFlash; uniform float uSpeed; uniform float uFever; uniform float uHurt; uniform float uBlur; uniform float uAspect;
       varying vec2 vUv;
       // speed lines: thin dashes streaming out from the vanishing point, only towards the edges of the screen
       float speedLines(vec2 uv) {
@@ -95,18 +95,29 @@ function buildComposer() {
       }
       void main() {
         vec3 c = texture2D(tDiffuse, vUv).rgb;
+        // speed blur: the outer screen smeared towards the vanishing point, never the middle where you aim
+        if (uBlur > 0.01) {
+          vec2 dir = vUv - vec2(0.5, 0.6);
+          float m = smoothstep(0.18, 0.6, length(dir * vec2(uAspect, 1.0))) * uBlur;
+          if (m > 0.01) { vec3 acc = c; for (int i = 1; i <= 5; i++) acc += texture2D(tDiffuse, vUv - dir * (float(i) * 0.011 * m)).rgb; c = acc / 6.0; }
+        }
         float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
         c += mix(vec3(-0.01, 0.0, 0.035), vec3(0.03, 0.01, -0.025), smoothstep(0.12, 0.7, l)) * (1.0 - l * 0.6);
-        c = mix(vec3(l), c, 1.1);
+        // a gentle S-curve: the night stays night (mid-tones sink a little, lamps and flames keep their punch);
+        // On Fire pushes the colour, not the brightness
+        c = clamp(c, 0.0, 1.0); c = mix(c, c * c * (3.0 - 2.0 * c), 0.3);
+        c = mix(vec3(l), c, 1.1 + 0.18 * uFever);
         c = c * 0.97 + vec3(0.012, 0.014, 0.032);
         vec2 d = (vUv - 0.5) * vec2(1.0, 1.25);
         c *= mix(0.84, 1.0, smoothstep(0.9, 0.32, length(d)));
         float n = fract(sin(dot(vUv * vec2(1789.3, 2371.1) + fract(uTime), vec2(12.9898, 78.233))) * 43758.5453);
         c += (n - 0.5) * 0.014;
         if (uSpeed > 0.01) c += speedLines(vUv) * uSpeed * vec3(1.0, 0.84, 0.58) * 0.5;
-        // On Fire: the edges of the screen burn orange, flickering; a firecracker hit: a red jolt at the edges
-        float edge = smoothstep(0.32, 0.78, length(d));
-        c += uFever * edge * vec3(1.0, 0.42, 0.06) * (0.3 + 0.12 * sin(uTime * 11.0) + 0.06 * sin(uTime * 23.0));
+        // On Fire: the screen closes in, darker at the sides, and only its outer rim burns orange, flickering
+        // (lighting the whole edge washed the night out); a firecracker hit: a red jolt at the edges
+        float edge = smoothstep(0.32, 0.78, length(d)), rim = smoothstep(0.55, 0.95, length(d));
+        c *= 1.0 - uFever * edge * 0.3;
+        c += uFever * rim * vec3(1.0, 0.4, 0.06) * (0.24 + 0.1 * sin(uTime * 11.0) + 0.05 * sin(uTime * 23.0));
         c = mix(c, c * vec3(1.0, 0.5, 0.45) + vec3(0.35, 0.02, 0.0) * edge, uHurt);
         c += uFlash * vec3(1.0, 0.93, 0.8);       // the strike's flash
         c *= 1.0 - uFade;
@@ -222,15 +233,11 @@ async function boot() {
   const manifest = {};
   for (const c of credits) { const name = c.file.replace(/\.[a-z0-9]+$/i, ''); manifest[name] = { url: `assets/audio/${c.file}`, ...(mix[name] || {}) }; }
   sound = new Sound(manifest);
-  // The short sounds first, then the start screen; the long beds (music, crowd, crackers, cheer: over half the
-  // audio) load behind it. On a weak signal the first open is about twice as quick. A run started before they
-  // arrive plays with the beat and effects, and picks the beds up as soon as they land.
-  const LATER = ['music_track', 'ambience', 'music_tabla', 'crackers', 'cheer'];
+  // The short sounds first, then the start screen; the long beds (crowd, crackers, cheer) load behind it. The
+  // score itself is made in the game, so a run started before they arrive has all its music.
+  const LATER = ['ambience', 'crackers', 'cheer'];
   await sound.load(v => progress(0.6 + v * 0.38), Object.keys(manifest).filter(n => !LATER.includes(n)));
-  sound.load(null, LATER).then(() => {
-    if (mode === 'attract') sound.landing();
-    else if (mode === 'play' && sound.running && !sound.loops.music_track) { sound.loop('music_track', { gain: 0.85, at: sound.nextBar(), fade: 0.3, bus: sound.pump }); if (lastAct >= 1) sound.act(lastAct); }
-  });
+  sound.load(null, LATER).then(() => { if (mode === 'attract') sound.landing(); });
   fx.onBurst = (pos, big) => { const d = pos.distanceTo(camera.position); sound.atDistance(['firework_1', 'firework_2', 'firework_3'][(Math.random() * 3) | 0], d, clamp(pos.x / 20, -1, 1), 1.1 * big, 0.92 + Math.random() * 0.16); };
   street.onIgnite = (x, y, z) => fx.sparks(x, y + 0.1, z, 5, 1.3);
   // the triangle is far off in the sky, but its bell should ring as if it were just over the rooftops
@@ -258,7 +265,7 @@ function toAttract(first) {
   resetFrames();                        // judge quality on this screen's frames, not the finale's
   glowTarget = 0.5; if (first) glow = 0.5; slotNext = 0; camS = -4;
   triangle.reset(); fx.clear();
-  $('hud').classList.remove('on'); $('result').classList.remove('on', 'reveal');
+  $('hud').classList.remove('on'); $('result').classList.remove('on', 'charge', 'reveal'); clearPetals();
   // a score to beat, for the queue watching at the stall
   const best = stall.best(); $('best').textContent = best > 0 ? S.best(best) : '';
   show('landing');
@@ -289,6 +296,10 @@ function popCount(text, kind) {
 let bannerAt = -9;
 function goRun() {
   mode = 'play'; modeT = 0; resetFrames();
+  for (const el of $('tips').children) el.classList.remove('on');
+  // the launch: the lens punches wide, a rush of air and sparks behind the gem as it shoots off the line
+  kickT = 0; sound.play('flame_whoosh', { gain: 1.1, rate: 0.85 }); sound.whoosh(0);
+  { const p = player.flameBase(tmp); fx.sparks(p.x, p.y - 0.3, p.z + 0.4, 30, 1.5); }
   $('hintText').textContent = S.hint;
   sound.play('conch');
   sound.beginRun();
@@ -362,16 +373,17 @@ function showResult() {
   const earned = tierFor(run.score), ti = stall.award(earned, CONFIG.TIERS), tier = CONFIG.TIERS[ti], win = !!tier.key;
   const prevBest = stall.best();
   result = stall.record(run.score, tier.key, CONFIG.TIERS[earned].key);
-  $('resNum').textContent = '0';
+  $('resNum').textContent = '0'; $('resNum2').textContent = run.score;
   $('pKick').textContent = win ? S.win : '';           // the card already says Happy Diwali
   $('pTitle').textContent = win ? S.prizes[tier.key] : S.none;
-  $('pLine').textContent = win ? (triangle.litCount() >= PANELS ? S.full : '') : S.noneLine;
+  const full = win && triangle.litCount() >= PANELS;
+  $('pLine').textContent = full ? S.full : win ? '' : S.noneLine; $('pLine').classList.toggle('hype', full);
   $('collect').textContent = win ? S.collect : '';
   $('vStall').textContent = stall.code ? S.stallLabel(stall.code) : ''; $('vCode').textContent = result.code; tickVerify();
   $('stamp').className = 'stamp'; $('stamp').parentElement.classList.remove('given'); const given = $('btnGiven'); given.disabled = false; given.textContent = S.given;
   $('newBest').classList.remove('on');
-  $('result').classList.toggle('lose', !win);
-  $('result').classList.add('on');
+  const R = $('result'); R.classList.remove('charge', 'reveal'); R.classList.toggle('lose', !win); R.classList.toggle('big', win && ti === 0);
+  R.classList.add('on');
   count = { t: -0.2, dur: Math.min(2.2, 0.7 + run.score * 0.022), shown: 0, done: false, win, big: ti === 0, best: run.score > prevBest && prevBest > 0 };
   const detail = { triangles: run.score, diyas: run.lit, tier: ti, prize: tier.key, earned: CONFIG.TIERS[earned].key, code: result.code, stall: stall.code };
   try { if (window.parent !== window) window.parent.postMessage({ type: 'diyadash:result', ...detail }, '*'); } catch (e) { /* not embedded */ }
@@ -404,8 +416,7 @@ const hooks = {
     if (hit) {
       d.litAt = clock;
       const z = -d.s, pan = clamp(d.x / 2.5, -1, 1) * 0.7, fire = onFire(run);
-      sound.ignite(pan); sound.bell(Math.min(run.chain - 1, 12), pan); sound.duck(0.72, 0.2);
-      if (fire) sound.sparkle(run.chain);
+      sound.catchNote(run.chain, pan, d.gold, fire); sound.ignite(pan);
       buzz(d.gold ? HAPTIC.gold : fire ? HAPTIC.fire : HAPTIC.catch(run.chain));
       fx.sparks(d.x, 0.55 + 0.25, z, d.gold ? 26 : fire ? 22 : 14, d.gold || fire ? 1.4 : 1);
       popAt(d.x, 1.25, z, `+${pts}`, d.gold ? 'gold' : fire ? 'fire' : '');
@@ -415,8 +426,15 @@ const hooks = {
       const ns = d.gold ? 2 : 1;
       for (let k = 0; k < ns; k++) { const part = ids.filter((_, j) => j % ns === k); after(k * 0.09, () => fx.streak(tmp2.set(d.x, 0.95, -d.s), triangle.slotFor(part[0]), part)); }
       updateScore(); showCombo(true);
-      if (run.chain > 0 && run.chain % 10 === 0) { launchFirework(true); buzz(HAPTIC.combo); }
-    } else { d.missAt = clock; showCombo(false); }      // a miss: a dark diya, the streak gone, the meter knocked back
+      // every catch, on the beat: the flame jumps, the lens breathes, a ring of light runs out over the stones
+      player.kick(); pulseT = 0; waves.push({ x: d.x, z, t: clock, gold: d.gold });
+      // and the streak builds: every fifth catch a chord, the street cheers, the screen's edges flare gold;
+      // every tenth a rocket too
+      if (run.chain >= 5 && run.chain % 5 === 0) {
+        sound.chord(); cheerT = 0; goldT = 0; buzz(HAPTIC.combo);
+        if (run.chain % 10 === 0) { launchFirework(true); sound.play('cheer', { gain: 0.35 + Math.min(run.chain, 30) * 0.01 }); }
+      }
+    } else { d.missAt = clock; showCombo(false); sound.dud(clamp(d.x / 2.5, -1, 1) * 0.5); }   // a miss: a dark diya, a dead string, the streak gone
     if (levelChanged && hit) { flameBadge(run.level); sound.play('flame_whoosh', { gain: 0.9, rate: 1 + run.level * 0.05 }); buzz(HAPTIC.level); }
   },
   // a firecracker: hit it and the flame gutters (streak, meter and a level gone); skim past it for a bonus
@@ -430,7 +448,7 @@ const hooks = {
         const a = Math.random() * Math.PI * 2, u = Math.random() * 2 - 1, sp = 3 + Math.random() * 4, rr = Math.sqrt(1 - u * u), c = [[3.6, 3.2, 2.6], [3.6, 0.9, 0.5], [3.6, 2.2, 0.6]][k % 3];
         fx.emit(h.x, 0.7, z, Math.cos(a) * rr * sp, Math.abs(u) * sp, Math.sin(a) * rr * sp, 0.05 + Math.random() * 0.04, c[0], c[1], c[2], 0.35 + Math.random() * 0.35, 2.5, -6, 1);
       }
-      sound.impact(0.9, true); sound.play('crackers', { gain: 0.9, pan, dur: 0.9 }); sound.play('ignite_b', { gain: 1, rate: 0.6 });
+      sound.impact(0.9, true); sound.choke(); sound.play('crackers', { gain: 0.9, pan, dur: 0.9 }); sound.play('ignite_b', { gain: 1, rate: 0.6 });
       buzz(HAPTIC.hit); showCombo(false); updateScore(true);
     } else if (near) {
       kickT = 0;
@@ -466,6 +484,8 @@ function showCombo(up) {
   } else if (!up && c.classList.contains('on')) { c.className = 'combo drop'; }
 }
 let fireT = -1, hurtT = -1, kickT = -1, rushCue = false, rushOn = false, dodgeShown = false, fireBlend = 0;
+let pulseT = 9, cheerT = 9, goldT = 9;
+const waves = [];
 function updateScore(reset) {
   const el = $('score'); el.textContent = run.score;
   if (!reset) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
@@ -626,10 +646,14 @@ function update(dt) {
   for (let i = timers.length - 1; i >= 0; i--) if (timers[i].at <= clock) { const t = timers[i]; timers.splice(i, 1); t.fn(); }
   // flow
   if (mode === 'countdown') {
-    // the landing clears first (a quarter second), then 3, 2, 1
-    const n = 3 - Math.floor((modeT - 0.25) / 0.75);
-    if (modeT >= 0.25 && n !== countShown && n >= 1) { countShown = n; popCount(n, ''); sound.play('ui_tick', { gain: 0.7 }); buzz(8); }
-    if (modeT >= 2.5) goRun();
+    // the landing clears first (a quarter second), then 3, 2, 1 on every other beat of the music, each a dhol stroke
+    const n = 3 - Math.floor((modeT - 0.25) / COUNT_STEP);
+    if (modeT >= 0.25 && n !== countShown && n >= 1) {
+      countShown = n; popCount(n, ''); sound.count(n); buzz(8);
+      // one tip per count: swipe, then On Fire, then the crackers
+      [...$('tips').children].forEach((el, i) => el.classList.toggle('on', i === 3 - n));
+    }
+    if (modeT >= 0.25 + 3 * COUNT_STEP) goRun();
   } else if (mode === 'play') {
     if (AUTOPLAY) { window._botR = window._botR || mulberry32(7); botStep(run, dt, 0.9, window._botR); }
     if (keys.ArrowLeft || keys.a) run.x = clamp(run.x - 5 * dt, -ROAD_X, ROAD_X);
@@ -645,7 +669,7 @@ function update(dt) {
     // the final rush: a rising sweep, then the surge, every light in the street up, and golden lanes to the end
     if (!rushCue && run.t >= CONFIG.RUSH_AT - 1.7) { rushCue = true; sound.riser(1.7, 0.26); }
     if (!rushOn && run.t >= CONFIG.RUSH_AT) {
-      rushOn = true; popCount(S.rush, 'rush'); sound.setRush(); sound.impact(0.85); sound.play('crackers', { gain: 0.8, pan: 0.5 });
+      rushOn = true; popCount(S.rush, 'rush'); sound.impact(0.85); sound.play('crackers', { gain: 0.8, pan: 0.5 });
       buzz(HAPTIC.rush); kickT = 0; flashT = 0.1; launchFirework(true); after(0.3, () => launchFirework(true));
     }
     // the last five seconds count down big, high in the sky where they don't hide the diyas, with a heartbeat
@@ -680,7 +704,9 @@ function update(dt) {
         el.classList.remove('slam'); void el.offsetWidth; el.classList.add('slam');
         sound.play('music_hit_dholak_bass', { gain: 1.2 }); sound.play('ignite_b', { gain: 0.7 }); buzz(30);
         if (count.best) { $('newBest').classList.add('on'); sound.play('bell_b', { gain: 0.7, rate: 1.5, delay: 0.12 }); }
-        after(0.35, revealPrize);
+        // the card gathers itself (a wobble, the halo swelling, a short rise), then turns over
+        $('result').classList.add('charge'); sound.riser(0.55, 0.16);
+        after(0.5, revealPrize);
       }
     }
   } else if (mode === 'attract') {
@@ -699,8 +725,8 @@ function update(dt) {
   }
   // the street brightens with the player's light
   // (On Fire lifts every light in the street for as long as it burns; the rush brings them all up)
-  if (mode === 'play' || mode === 'finale' || mode === 'result') glowTarget = Math.min(1, 0.1 + 0.9 * clamp(run.score / CONFIG.TIERS[0].min, 0, 1) + (onFire(run) ? 0.25 : 0));
-  if (rushOn && mode !== 'attract') glowTarget = Math.max(glowTarget, 0.85);
+  if (mode === 'play' || mode === 'finale' || mode === 'result') glowTarget = Math.min(1, 0.1 + 0.9 * clamp(run.score / CONFIG.TIERS[0].min, 0, 1) + (onFire(run) ? 0.12 : 0));
+  if (rushOn && mode !== 'attract') glowTarget = Math.max(glowTarget, 0.65);
   glow += (glowTarget - glow) * Math.min(1, dt * (mode === 'countdown' ? 2.5 : 1.4));
   street.glow.value = glow; sky.material.uniforms.uGlow.value = glow;
 
@@ -720,18 +746,33 @@ function update(dt) {
   if (fireBlend > 0.02 && gemA > 0) {
     const p = player.flameBase(tmp);
     flames.push(p.x, p.y + 0.05, p.z, 0.95 * fireBlend, 9.1, 1.45 * fireBlend, clamp(-player.vx * 0.08, -0.7, 0.7));
-    pools.push(p.x, 0.012, p.z, 4.5 * fireBlend, 0.55 * fireBlend, 0.3 * fireBlend, 0.08 * fireBlend);
+    pools.push(p.x, 0.012, p.z, 3.4 * fireBlend, 0.45 * fireBlend, 0.24 * fireBlend, 0.06 * fireBlend);
     for (let k = 0; k < 3; k++) fx.emit(p.x + (Math.random() - 0.5) * 0.4, p.y + Math.random() * 0.5, p.z + 0.1, (Math.random() - 0.5) * 1.5, 0.6 + Math.random() * 1.6, (Math.random() - 0.5) * 1.5, 0.07 + Math.random() * 0.06, 3.6, 2.2, 0.8, 0.35 + Math.random() * 0.3, 1.5, -2, 0);
   }
   flames.end(clock); pools.end(); washes.end(); rings.end(); gameDiyas.end(); decorDiyas.end();
   if (clock < glitterUntil) fx.glitter(camera.position.x, camera.position.z - 75, 110, 80, 6);
+  // embers drifting in the air down the street, clear of the lane you aim along: near the camera they whip
+  // past at your speed, the strongest sense of it (everything else on screen is metres away)
+  if (mode === 'play' && !reducedMotion) {
+    const n = (Math.random() < 0.5 ? 1 : 2) + (speedAt(run.t) > 14 ? 1 : 0) + (fireBlend > 0.5 ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      const side = Math.random() < 0.5 ? -1 : 1, warm = Math.random();
+      fx.emit(camera.position.x + side * (0.7 + Math.random() * 2.6), 0.5 + Math.random() * 3.4, camera.position.z - 12 - Math.random() * 30,
+        (Math.random() - 0.5) * 0.4, 0.15 + Math.random() * 0.3, (Math.random() - 0.5) * 0.4, 0.022 + Math.random() * 0.022,
+        2.4 + warm, 1.2 + warm * 0.6, 0.35, 2.4 + Math.random() * 0.8, 0.2, 0.05, 1);
+    }
+  }
   fx.update(dt, clock); triangle.update(dt, clock);
   if (flashT >= 0) { flashT += dt; if (flashT > 1.5) flashT = -1; }
   if (shakeT >= 0) { shakeT += dt; if (shakeT > 1.2) shakeT = -1; }
   if (hurtT >= 0) { hurtT += dt; if (hurtT > 1) hurtT = -1; }
   if (kickT >= 0) { kickT += dt; if (kickT > 1) kickT = -1; }
+  pulseT += dt; cheerT += dt; goldT += dt;
+  // the crowd: cheering while the player is On Fire or in the rush, and for a moment at each streak milestone
+  street.people.mat.uniforms.uCheer.value = mode === 'play' ? Math.max(fireBlend, rushOn ? 0.75 : 0, cheerT < 2.2 ? 1 - cheerT / 2.2 : 0) : mode === 'finale' || mode === 'result' ? 1 : 0;
+  street.people.mat.uniforms.uPlayerZ.value = player.root.position.z;
   triGlow += (triangle.litCount() / PANELS - triGlow) * Math.min(1, dt * 2);
-  triLight.intensity = 0.12 + 1.5 * triGlow;
+  triLight.intensity = 0.12 + 0.9 * triGlow;
   // camera
   placeCamera(dt, pz);
   sky.position.copy(camera.position); stars.position.copy(camera.position); stars.material.uniforms.uTime.value = clock;
@@ -740,20 +781,38 @@ function update(dt) {
   gradePass.uniforms.uFlash.value = flashT >= 0 && !reducedMotion ? 0.42 * Math.exp(-flashT * 7) : 0;
   const vNow = mode === 'play' ? speedAt(run.t) : 0, G = gradePass.uniforms;
   G.uSpeed.value = reducedMotion ? 0 : clamp(clamp((vNow - 11) / 8, 0, 1) * 0.65 + fireBlend * 0.45 + (rushOn && mode === 'play' ? 0.15 : 0), 0, 1);
-  G.uFever.value = fireBlend; G.uHurt.value = hurtT >= 0 ? 0.75 * Math.exp(-hurtT * 4) : 0;
+  G.uFever.value = fireBlend + (goldT < 0.5 ? (1 - goldT / 0.5) * 0.7 : 0); G.uHurt.value = hurtT >= 0 ? 0.75 * Math.exp(-hurtT * 4) : 0;
+  G.uBlur.value = reducedMotion || qi === 0 ? 0 : clamp((vNow - 12) / 7, 0, 1) * 0.55 + fireBlend * 0.35 + (kickT >= 0 ? Math.exp(-kickT * 4) * 0.6 : 0);
 }
 function revealPrize() {
-  $('result').classList.add('reveal');
-  // a prize sets the sky triangle off once more, with a second volley and more glitter
-  if (count.win) {
-    sound.play('cheer', { gain: count.big ? 0.9 : 0.6 }); sound.play('firework_3', { gain: 0.8, delay: 0.2 });
-    triangle.blast(); glitterUntil = clock + 2.5;
-    for (let i = 0; i < (count.big ? 6 : 4); i++) after(i * 0.22, () => chowkFirework(i, 1.7, i < 2));
-    buzz(count.big ? [60, 50, 60, 50, 160] : [50, 60, 110]);
-  } else { sound.play('bell_b', { gain: 0.6, rate: 0.39 }); buzz(25); }
+  $('result').classList.add('reveal'); sound.whoosh();
+  // the prize face comes round about a third of the way into the turn: that is where it lands
+  after(0.3, () => {
+    if (count.win) {
+      // a prize sets the sky triangle off once more, with a second volley, more glitter and petals
+      sound.impact(0.9); sound.play('cheer', { gain: count.big ? 0.9 : 0.6 }); sound.play('firework_3', { gain: 0.8, delay: 0.2 });
+      triangle.blast(); glitterUntil = clock + 2.5; petals(count.big ? 44 : 28);
+      for (let i = 0; i < (count.big ? 6 : 4); i++) after(i * 0.22, () => chowkFirework(i, 1.7, i < 2));
+      buzz(count.big ? [60, 50, 60, 50, 160] : [50, 60, 110]);
+    } else { sound.impact(0.45, true); sound.play('bell_b', { gain: 0.6, rate: 0.39 }); buzz(25); }
+  });
   // then the music settles under the promoter's voice
   after(3.5, () => sound.settle());
 }
+// Marigold, rose and jasmine petals thrown over a prize. Most fall behind the card; one in six falls close by, in front.
+const PETAL_COLS = ['#ff9f1a', '#ffb627', '#f47b0f', '#ffc93a', '#ff9f1a', '#c8102e', '#e0303f', '#fff6e8'];
+function petals(n) {
+  if (reducedMotion) return;
+  const behind = $('petalsB'), front = $('petalsF'), r = Math.random;
+  for (let i = 0; i < n; i++) {
+    const el = document.createElement('i'), near = i % 6 === 0, s = near ? 1.6 + r() * 0.4 : 0.75 + r() * 0.5, col = PETAL_COLS[(r() * PETAL_COLS.length) | 0];
+    el.style.cssText = `left:${(r() * 100).toFixed(1)}%;width:${(10 * s).toFixed(1)}px;height:${(14 * s).toFixed(1)}px;background:${col};` +
+      `--d:${(near ? 3 + r() : 4.2 + r() * 2.4).toFixed(2)}s;--w:${(r() * 1.4).toFixed(2)}s;--sw:${((14 + r() * 26) * (r() < 0.5 ? -1 : 1)).toFixed(0)}px;--r:${(r() * 360) | 0}deg`;
+    (near ? front : behind).appendChild(el);
+  }
+  after(8.5, clearPetals);
+}
+function clearPetals() { $('petalsB').textContent = ''; $('petalsF').textContent = ''; }
 
 // Gameplay diyas: on their stands ahead of the player, each on a marigold ring so it reads in any light.
 // Ring states: waiting (soft pulse), lined up with the flame (bright and larger), lit (gold), missed (dim).
@@ -768,15 +827,18 @@ function drawCourse(ps) {
     if (d.gold && !d.missed) tokens = drawToken(d, z, tokens);
     gameDiyas.add(d.x, 0, z, -1.2 + ((d.i * 0.618) % 1) * 0.6, scale, d.i % 3, d.gold, wick, true);
     const ringSize = d.gold ? 1.95 : 1.6;
+    // behind the gem, passing under the lens, a diya's ring and pool fade away: that close they would fill the
+    // bottom of the screen with a blurred orange disc
+    const behind = clamp((ahead + 3.5) / 3, 0, 1);       // (the camera is 7 m back, 3.4 m up)
     if (d.lit) {
       const t = clock - d.litAt;
       const grow = t < 0.35 ? 1 + Math.sin((t / 0.35) * Math.PI) * 0.6 : 1;
       const size = (d.gold ? 0.55 : 0.46) * Math.min(1, t / 0.12 + 0.2) * grow;
       const heat = t < 0.25 ? 1.2 + (1 - t / 0.25) * 1.6 : 1.2;
       flames.push(wick.x, wick.y - 0.015, wick.z, size, d.i * 1.37, heat);
-      pools.push(d.x, 0.01, z, 4.2, 0.55, 0.3, 0.1);
+      pools.push(d.x, 0.01, z, 3.2, 0.48 * behind, 0.26 * behind, 0.08 * behind);   // (any wider and a lit lane runs into one orange smear)
       const flash = t < 0.4 ? 1 - t / 0.4 : 0;
-      rings.push(d.x, 0.018, z, ringSize * (1 + flash * 0.25), 1.25 + flash, 1.05 + flash * 0.6, 0.55 + flash * 0.4, 1);
+      rings.push(d.x, 0.018, z, ringSize * (1 + flash * 0.25), 1.1 + flash, 0.92 + flash * 0.6, 0.48 + flash * 0.4, behind);
       if (lights < diyaLights.length && ahead > -7) { const l = diyaLights[lights++]; l.position.set(wick.x, wick.y + 0.35, wick.z); l.intensity = 2.6 * (0.9 + 0.1 * Math.sin(clock * 15 + d.i)); }
     } else {
       // an ember waits on the wick; ring and ember brighten when the flame is lined up to catch it
@@ -784,13 +846,20 @@ function drawCourse(ps) {
       const aim = mode === 'play' && ahead > 0 && ahead < 14 && Math.abs(d.x - run.x) < reach ? 1 : 0;
       const fadeMiss = d.missed ? clamp(1 - (clock - d.missAt) / 0.5, 0, 1) : 1;
       flames.push(wick.x, wick.y - 0.01, wick.z, (0.15 + aim * 0.05) * fadeMiss, d.i * 1.37, (0.5 + aim * 0.4 * pulse) * Math.max(fadeMiss, 0.15));
-      if (d.missed) rings.push(d.x, 0.018, z, ringSize, 0.45, 0.42, 0.42, 0.7);
+      if (d.missed) rings.push(d.x, 0.018, z, ringSize, 0.45, 0.42, 0.42, 0.7 * behind);
       else if (aim) rings.push(d.x, 0.018, z, ringSize * 1.12, 1.3 + 0.2 * pulse, 1.15 + 0.15 * pulse, 0.8, 1);
       else rings.push(d.x, 0.018, z, ringSize, 0.85 + 0.15 * pulse, 0.78 + 0.12 * pulse, 0.7, 1);
       if (d.gold && !d.missed) pools.push(d.x, 0.012, z, 2.4, 0.3 + 0.12 * pulse, 0.2, 0.04);
     }
   }
   tokenMesh.count = tokens; tokenMesh.instanceMatrix.needsUpdate = true;
+  // the rings of light that run out from each catch
+  for (let i = waves.length - 1; i >= 0; i--) {
+    const w = waves[i], t = (clock - w.t) / 0.42;
+    if (t >= 1 || mode !== 'play') { waves.splice(i, 1); continue; }
+    // (fading as the gem leaves it behind, like the diyas' own rings, or at full speed it smears under the lens)
+    rings.push(w.x, 0.02, w.z, (w.gold ? 2.2 : 1.7) + t * (w.gold ? 4.2 : 3.2), 1.6, 1.25, 0.7, (1 - t) * (1 - t) * 0.85 * clamp((-w.z - ps + 3.5) / 3, 0, 1));
+  }
 }
 
 // The brand in the thing players chase hardest: every golden diya carries the official TOTAL triangle, floating
@@ -859,7 +928,7 @@ function placeCamera(dt, pz) {
   const v = mode === 'play' ? speedAt(run.t) : mode === 'finale' ? speedAt(CONFIG.DURATION) : 9, C = camAt(v);
   // the lens: wider with speed, wider still while On Fire, a quick punch on a near miss or as the fire lights
   fireBlend += ((mode === 'play' && onFire(run) ? 1 : 0) - fireBlend) * Math.min(1, dt * 3);
-  const punch = kickT >= 0 && !reducedMotion ? 6 * Math.exp(-kickT * 5) : 0;
+  const punch = (kickT >= 0 && !reducedMotion ? 6 * Math.exp(-kickT * 5) : 0) + (pulseT < 0.2 && !reducedMotion ? 1.3 * Math.sin((pulseT / 0.2) * Math.PI) : 0);
   const fovT = mode === 'play' ? Math.min(76, 64 + (v - 9) * 0.8 + fireBlend * 4) + punch : lerp(64 + (v - 9) * 0.8 * (mode === 'finale' ? 1 - fin : 0), FIN.fov, fin);
   camera.fov += (fovT - camera.fov) * Math.min(1, dt * (punch > 0.5 ? 9 : 2)); camera.updateProjectionMatrix();
   const cam = tmp.set(px * CAM.follow, C.up + Math.sin(clock * 0.9) * 0.03, pz + C.back);
@@ -909,29 +978,38 @@ if (DEBUG) Object.assign(window.DiyaDash, {
   passes() { return { bloomPass, gradePass, composer }; }, scene,
   world() { return { street, pools, washes, player, keyLight, camera, fx, triangle, finale, run }; },
   // dev: render one frame and post it to the local dev server for inspection
-  // dev: render 15 s of a run's sound offline and post it as a WAV for measurement
-  async renderMix(solo, file = 'mix') {
-    const sr = 44100, off = new OfflineAudioContext(2, sr * 15, sr), s2 = new Sound(sound.manifest, off);
+  // dev: render a whole run's sound offline (the count-in, a bot's 30 s on the game's own rules with its real
+  // catches, misses, firecrackers and On Fire, the finale and the result) and post it as a WAV for measurement
+  async renderMix(solo, file = 'mix', skill = 0.8) {
+    const sr = 44100, LEN = 44, off = new OfflineAudioContext(2, sr * LEN, sr), s2 = new Sound(sound.manifest, off);
     s2.buf = sound.buf; s2.setMuted(false);
-    if (solo) { for (const b of ['music', 'sfx', 'amb']) if (b !== solo) { s2[b].disconnect(); } }
+    // solo one bus: music, sfx or amb, or inside the music the drums, the melody (santoor, tumbi, lead) or the pad and bass
+    const subs = ['drums', 'melo', 'pump'];
+    const keep = solo === 'music' ? ['music', ...subs] : subs.includes(solo) ? ['music', solo] : [solo];
+    if (solo) for (const k of ['music', 'sfx', 'amb', ...subs]) if (!keep.includes(k)) s2[k].disconnect();
     // the offline renderer allows one pause per moment, so events at the same time share it
     const events = new Map(), q = t => Math.round((t * sr) / 128) * 128 / sr;
     const at = (t, fn) => { const k = q(t); if (!events.has(k)) events.set(k, []); events.get(k).push(fn); };
-    for (let t = 0.1; t < 14.9; t += 0.05) at(t, () => s2.schedule());
+    for (let t = 0.05; t < LEN - 0.1; t += 0.05) at(t, () => s2.schedule());
     at(0.02, () => s2.countdown());
-    at(2.25, () => { s2.play('conch'); s2.beginRun(); });
-    // a compressed run: the dark gali, the bazaar, On Fire, a near miss and a firecracker hit, the rush, the heartbeat
-    let chain = 0;
-    for (let t = 2.8; t < 13.4; t += 0.42) { const c = chain++; at(+t.toFixed(2), () => { s2.ignite((c % 3 - 1) * 0.4); s2.bell(Math.min(c, 12)); s2.duck(0.72, 0.2); if (t > 6.4 && t < 9.4) s2.sparkle(c); }); }
-    at(4.5, () => { s2.act(1); s2.play('crackers', { gain: 0.8, pan: -0.5 }); });
-    at(6.4, () => { s2.impact(0.7); s2.setFire(true); s2.play('flame_whoosh', { gain: 1.1, rate: 1.2 }); s2.play('firework_3', { gain: 0.6 }); });
-    at(7.2, () => s2.atDistance('firework_1', 70, 0.3, 1.1));
-    at(8.3, () => s2.whoosh(0.6));
-    at(9.4, () => { s2.setFire(false); s2.impact(0.9, true); s2.play('crackers', { gain: 0.9, pan: 0.3, dur: 0.9 }); s2.play('ignite_b', { gain: 1, rate: 0.6 }); });
-    at(9.8, () => s2.act(2));
-    at(10.3, () => s2.riser(1.7, 0.26));
-    at(12, () => { s2.setRush(); s2.impact(0.85); s2.play('crackers', { gain: 0.8, pan: 0.5 }); });
-    at(13, () => s2.heartbeat()); at(14, () => s2.heartbeat());
+    [3, 2, 1].forEach((n, k) => at(0.27 + k * COUNT_STEP, () => s2.count(n)));
+    const go = 0.27 + 3 * COUNT_STEP, r = newRun(7), rng = mulberry32(3);
+    at(go, () => { s2.play('conch'); s2.beginRun(); });
+    const ev = {
+      resolve(d, hit) {
+        const ch = r.chain, fire = onFire(r), pan = clamp(d.x / 2.5, -1, 1) * 0.7;
+        at(go + r.t, hit ? () => { s2.catchNote(ch, pan, d.gold, fire); s2.ignite(pan); if (ch >= 5 && ch % 5 === 0) s2.chord(); } : () => s2.dud(pan * 0.7));
+      },
+      hazard(h, hit, near) { if (hit) at(go + r.t, () => { s2.impact(0.9, true); s2.choke(); s2.play('crackers', { gain: 0.9, dur: 0.9 }); }); else if (near) at(go + r.t, () => s2.whoosh(0.5)); },
+      fever(on) { at(go + r.t, () => { if (on) { s2.impact(0.7); s2.play('flame_whoosh', { gain: 1.1, rate: 1.2 }); } s2.setFire(on); }); },
+    };
+    while (r.t < CONFIG.DURATION) { botStep(r, 1 / 60, skill, rng); step(r, 1 / 60, ev); }
+    at(go + 10, () => { s2.act(1); s2.play('crackers', { gain: 0.8, pan: -0.5 }); }); at(go + 20, () => s2.act(2));
+    at(go + CONFIG.RUSH_AT - 1.7, () => s2.riser(1.7, 0.26));
+    at(go + CONFIG.RUSH_AT, () => { s2.impact(0.85); s2.play('crackers', { gain: 0.8, pan: 0.5 }); });
+    for (let k = 5; k >= 1; k--) at(go + CONFIG.DURATION - k, () => s2.heartbeat());
+    at(go + CONFIG.DURATION, () => s2.finale(s2.untilBar(FIN.impactLead)));
+    at(go + CONFIG.DURATION + 8, () => s2.settle());
     for (const [t, fns] of events) off.suspend(t).then(() => { for (const f of fns) f(); off.resume(); });
     const buf = await off.startRendering();
     const L = buf.getChannelData(0), R = buf.getChannelData(1), n = L.length, wav = new DataView(new ArrayBuffer(44 + n * 4));
@@ -940,7 +1018,8 @@ if (DEBUG) Object.assign(window.DiyaDash, {
     for (let i = 0; i < n; i++) { const a = Math.max(Math.abs(L[i]), Math.abs(R[i])); if (a > peak) peak = a; if (a > 0.99) clips++; sum += L[i] * L[i] + R[i] * R[i]; }
     for (let s0 = 0; s0 + win < n; s0 += win / 2) { let w2 = 0; for (let i = s0; i < s0 + win; i++) w2 += L[i] * L[i] + R[i] * R[i]; maxWin = Math.max(maxWin, w2 / (2 * win)); }
     const db = v => +(20 * Math.log10(Math.max(v, 1e-9))).toFixed(1);
-    this.lastMix = { peakDb: db(peak), rmsDb: db(Math.sqrt(sum / (2 * n))), loudest400msDb: db(Math.sqrt(maxWin)), clips };
+    const arc = []; for (let s0 = 0; s0 + sr <= n; s0 += sr) { let w2 = 0; for (let i = s0; i < s0 + sr; i++) w2 += L[i] * L[i] + R[i] * R[i]; arc.push(Math.round(db(Math.sqrt(w2 / (2 * sr))))); }
+    this.lastMix = { peakDb: db(peak), rmsDb: db(Math.sqrt(sum / (2 * n))), loudest400msDb: db(Math.sqrt(maxWin)), clips, go: +go.toFixed(2), arc: arc.join(' ') };
     const w = (o, s) => [...s].forEach((ch, i) => wav.setUint8(o + i, ch.charCodeAt(0)));
     w(0, 'RIFF'); wav.setUint32(4, 36 + n * 4, true); w(8, 'WAVE'); w(12, 'fmt '); wav.setUint32(16, 16, true); wav.setUint16(20, 1, true); wav.setUint16(22, 2, true);
     wav.setUint32(24, sr, true); wav.setUint32(28, sr * 4, true); wav.setUint16(32, 4, true); wav.setUint16(34, 16, true); w(36, 'data'); wav.setUint32(40, n * 4, true);

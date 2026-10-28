@@ -66,7 +66,7 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 #hud { position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0; transition: opacity .4s ease; }
 #hud.on { opacity: 1; }
 /* Everything you read during play sits on a solid dark backing, so it holds up in daylight glare. */
-.hud-bar { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 62px; right: 120px; height: 42px; display: flex; align-items: center; gap: 10px;
+.hud-bar { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 62px; right: 176px; height: 42px; display: flex; align-items: center; gap: 10px;
   padding: 0 14px 0 12px; border-radius: 999px; background: rgba(10, 8, 24, .72); border: 1px solid rgba(255, 207, 90, .3); }
 .secs-left { font: 800 19px/1 var(--f-body); color: #fff; min-width: 2.2ch; font-variant-numeric: tabular-nums; }
 .secs-left.low { color: #ff8a5a; }
@@ -74,8 +74,9 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 .timer i { position: absolute; inset: 0; background: linear-gradient(90deg, var(--gold-deep), var(--gold)); transform-origin: left; }
 .timer.low i { background: linear-gradient(90deg, #ff4a2a, #ff9a4a); }
 .score { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 10px); right: max(12px, env(safe-area-inset-right, 0px)); height: 42px; display: flex; align-items: center; gap: 8px;
-  padding: 0 14px 0 8px; border-radius: 999px; background: rgba(10, 8, 24, .72); border: 1px solid rgba(255, 207, 90, .3); }
-.score img { width: 32px; height: auto; }
+  padding: 0 14px 0 13px; border-radius: 999px; background: rgba(10, 8, 24, .72); border: 1px solid rgba(255, 207, 90, .3); }
+/* the score reads "TOTAL 82": the wordmark is the label */
+.score img { height: 12px; width: auto; filter: invert(1) brightness(2); }
 .score b { font: 800 24px/1 var(--f-body); color: #fff; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
 .score b.bump { animation: bump .28s ease-out; }
 @keyframes bump { 30% { transform: scale(1.3); color: var(--gold); } }
@@ -88,7 +89,7 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 .count.pop { animation: pop .75s ease-out forwards; }
 .count.go { font-size: 68px; color: var(--gold); }
 /* On Fire and the final rush: big, hot, over the sky, gone in under a second */
-.count.fire, .count.rush { top: 20%; font-size: 58px; letter-spacing: .02em; color: #fff3c4; -webkit-text-stroke: 3px rgba(60, 10, 0, .9);
+.count.fire, .count.rush { top: 20%; font-size: clamp(44px, 14vw, 58px); white-space: nowrap; letter-spacing: .02em; color: #fff3c4; -webkit-text-stroke: 3px rgba(60, 10, 0, .9);
   text-shadow: 0 0 18px rgba(255, 120, 20, .95), 0 0 46px rgba(255, 80, 0, .75); }
 .count.rush { color: #fff; text-shadow: 0 0 18px rgba(255, 60, 30, .95), 0 0 46px rgba(255, 40, 0, .75); }
 .count.fire.pop, .count.rush.pop { animation: pop 1s ease-out forwards; }
@@ -135,42 +136,111 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 .hint span { font-weight: 800; font-size: 17px; padding: 8px 18px; border-radius: 999px; background: rgba(10, 8, 24, .75); }
 @keyframes swipe { 0%, 100% { transform: translateX(-38px); } 50% { transform: translateX(38px); } }
 
-/* result: the 3D triangle stays clear in the top of the screen; everything to read sits on a solid panel below */
-#result { justify-content: flex-end; padding: 0; }
-.res-panel { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 14px max(18px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 16px) max(18px, env(safe-area-inset-left, 0px));
-  border-radius: 28px 28px 0 0; border-top: 1px solid rgba(255, 207, 90, .4);
-  background: linear-gradient(180deg, rgba(14, 10, 30, .9) 0%, rgba(8, 6, 18, .97) 40%, #07060f 100%);
-  box-shadow: 0 -18px 50px rgba(0, 0, 0, .55);
-  transform: translateY(24px); opacity: 0; transition: transform .6s cubic-bezier(.2, .9, .3, 1), opacity .45s ease; }
-#result.on .res-panel { transform: none; opacity: 1; }
-.res-score { display: flex; align-items: center; justify-content: center; gap: 14px; }
-.res-tri { width: 62px; height: auto; filter: drop-shadow(0 4px 14px rgba(47, 124, 255, .55)); }
-.res-label { font-size: 14px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; color: var(--gold); text-align: left; }
-.res-num { font: 800 clamp(64px, 19vw, 84px)/.95 var(--f-body); color: #fff; text-align: left; font-variant-numeric: tabular-nums; letter-spacing: -.01em;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, .5), 0 0 28px rgba(255, 170, 60, .4); will-change: transform; transform-origin: left center; }
+/* result: a festive card. The score counts up on its face; the card gathers itself, flips over and shows the prize,
+   with light rays and a halo behind it and petals falling. The 3D sky triangle and wordmark stay clear above it. */
+#result { justify-content: flex-end; gap: 14px; padding: 0 0 calc(env(safe-area-inset-bottom, 0px) + 14px); }
+#result::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, rgba(7, 6, 15, 0) 30%, rgba(7, 6, 15, .5) 58%, rgba(7, 6, 15, .9) 100%); }
+.gift-wrap { position: relative; z-index: 1; width: min(340px, calc(100% - 36px)); perspective: 1200px; opacity: 0; transform: translateY(48px) scale(.9); }
+#result.on .gift-wrap { animation: giftIn .75s cubic-bezier(.2, 1.35, .4, 1) .05s forwards; }
+@keyframes giftIn { to { opacity: 1; transform: none; } }
+/* the light behind the card: a halo that swells as it gathers itself and bursts as it turns, and slow-turning rays */
+.gift-wrap::before { content: ""; position: absolute; inset: -34% -26%; z-index: -1; pointer-events: none; border-radius: 50%; opacity: 0;
+  background: radial-gradient(closest-side, rgba(255, 196, 90, .6), rgba(255, 140, 40, .2) 55%, rgba(255, 140, 40, 0)); }
+#result.charge .gift-wrap::before { animation: halo0 .5s ease-in forwards; }
+#result.reveal .gift-wrap::before { animation: halo 1.5s cubic-bezier(.2, .9, .3, 1) forwards; }
+@keyframes halo0 { from { opacity: 0; transform: scale(.6); } to { opacity: .55; transform: scale(.85); } }
+@keyframes halo { 0% { opacity: .55; transform: scale(.85); } 22% { opacity: 1; transform: scale(1.25); } 100% { opacity: .75; transform: scale(1); } }
+#result.lose .gift-wrap::before { background: radial-gradient(closest-side, rgba(80, 150, 255, .4), rgba(80, 150, 255, 0)); }
+.rays { position: absolute; left: 50%; top: 50%; width: 760px; height: 760px; margin: -380px 0 0 -380px; z-index: -2; pointer-events: none; opacity: 0;
+  background: repeating-conic-gradient(rgba(255, 214, 120, .55) 0deg 5deg, rgba(255, 214, 120, 0) 7.5deg 15deg);
+  -webkit-mask: radial-gradient(circle, #000 10%, rgba(0, 0, 0, .45) 30%, transparent 56%); mask: radial-gradient(circle, #000 10%, rgba(0, 0, 0, .45) 30%, transparent 56%);
+  transition: opacity 1s ease .25s; will-change: transform; }
+#result.reveal .rays { opacity: .6; animation: spin 40s linear infinite; }
+#result.big.reveal .rays { opacity: .85; }
+#result.lose .rays { background: repeating-conic-gradient(rgba(150, 195, 255, .45) 0deg 5deg, rgba(150, 195, 255, 0) 7.5deg 15deg); }
+#result.lose.reveal .rays { opacity: .3; }
+@keyframes spin { to { transform: rotate(1turn); } }
+/* the card turns in 3D: nothing on .gift may flatten it (no opacity, filter or overflow there) */
+.gift { position: relative; display: grid; -webkit-transform-style: preserve-3d; transform-style: preserve-3d; }
+#result.charge .gift { animation: charge .5s ease-in both; }
+@keyframes charge { 0% { transform: none; } 30% { transform: rotate(-2.5deg) scale(1.03); } 55% { transform: rotate(2.5deg) scale(1.05); } 80% { transform: rotate(-1.5deg) scale(1.07); } 100% { transform: rotate(0) scale(1.06); } }
+#result.reveal .gift { animation: flip 1s cubic-bezier(.3, .7, .3, 1) both; }
+@keyframes flip { 0% { transform: scale(1.06) rotateY(0); } 40% { transform: scale(1.16) rotateY(120deg); } 72% { transform: scale(1.01) rotateY(194deg); } 100% { transform: scale(1) rotateY(180deg); } }
+.face { grid-area: 1 / 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 24px 20px 18px; border-radius: 24px; border: 1.5px solid rgba(255, 222, 150, .9); -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+/* an inner gold rule, and a corner flourish in each corner */
+.face::before { content: ""; position: absolute; inset: 7px; border-radius: 18px; border: 1px solid rgba(255, 207, 90, .5); pointer-events: none; }
+.face::after { content: ""; position: absolute; inset: 3px; pointer-events: none; background-repeat: no-repeat; background-size: 40px 40px;
+  background-position: top left, top right, bottom left, bottom right;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44' fill='none' stroke='%23ffcf5a' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M14 41V24a10 10 0 0 1 10-10h17'/%3E%3Cpath d='M14 14c0-4 2.5-6.5 6.5-6.5M14 14c-4 0-6.5 2.5-6.5 6.5'/%3E%3Ccircle cx='14' cy='14' r='2.8' fill='%23ffcf5a' stroke='none'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44' fill='none' stroke='%23ffcf5a' stroke-width='1.5' stroke-linecap='round'%3E%3Cg transform='matrix(-1 0 0 1 44 0)'%3E%3Cpath d='M14 41V24a10 10 0 0 1 10-10h17'/%3E%3Cpath d='M14 14c0-4 2.5-6.5 6.5-6.5M14 14c-4 0-6.5 2.5-6.5 6.5'/%3E%3Ccircle cx='14' cy='14' r='2.8' fill='%23ffcf5a' stroke='none'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44' fill='none' stroke='%23ffcf5a' stroke-width='1.5' stroke-linecap='round'%3E%3Cg transform='matrix(1 0 0 -1 0 44)'%3E%3Cpath d='M14 41V24a10 10 0 0 1 10-10h17'/%3E%3Cpath d='M14 14c0-4 2.5-6.5 6.5-6.5M14 14c-4 0-6.5 2.5-6.5 6.5'/%3E%3Ccircle cx='14' cy='14' r='2.8' fill='%23ffcf5a' stroke='none'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44' fill='none' stroke='%23ffcf5a' stroke-width='1.5' stroke-linecap='round'%3E%3Cg transform='matrix(-1 0 0 -1 44 44)'%3E%3Cpath d='M14 41V24a10 10 0 0 1 10-10h17'/%3E%3Cpath d='M14 14c0-4 2.5-6.5 6.5-6.5M14 14c-4 0-6.5 2.5-6.5 6.5'/%3E%3Ccircle cx='14' cy='14' r='2.8' fill='%23ffcf5a' stroke='none'/%3E%3C/g%3E%3C/svg%3E"); }
+/* face up: the night, a fine gold dot pattern, the score counting */
+.front { background: radial-gradient(circle, rgba(255, 207, 90, .09) 1.2px, transparent 1.7px) 0 0 / 14px 14px, radial-gradient(120% 90% at 50% 0%, #2a2160 0%, #151036 50%, #0b0820 100%);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, .6), 0 0 50px rgba(47, 124, 255, .28), inset 0 1px 0 rgba(255, 255, 255, .18); }
+/* TOTAL / 82 / diyas lit: the brand's own wordmark is the word for the score */
+.res-word { height: auto; filter: invert(1) brightness(2); }
+.front .res-word { width: 168px; filter: invert(1) brightness(2) drop-shadow(0 2px 12px rgba(47, 124, 255, .6)); }
+.res-label { font: 700 19px/1 var(--f-body); letter-spacing: .03em; color: var(--gold); }
+.res-num { font: 800 clamp(84px, 26vw, 112px)/1 var(--f-body); color: #fff; font-variant-numeric: tabular-nums; letter-spacing: -.02em; margin: 6px 0 2px;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, .45), 0 0 34px rgba(255, 170, 60, .45); will-change: transform; }
 /* the final count lands with a thump */
 .res-num.slam { animation: slam .42s cubic-bezier(.2, 1.7, .4, 1); }
 @keyframes slam { 0% { transform: scale(1.45); color: var(--gold); } 60% { color: #fff; } 100% { transform: scale(1); } }
-.card { width: 100%; max-width: 360px; padding: 18px 18px 16px; border-radius: 22px; position: relative;
-  background: radial-gradient(120% 100% at 50% 0%, #d8222a 0%, var(--red) 38%, #6a0a16 100%); border: 1.5px solid rgba(255, 220, 140, .8);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, .6), 0 0 60px rgba(255, 120, 40, .25); opacity: 0; transform: translateY(16px) scale(.97); transition: opacity .6s ease, transform .7s cubic-bezier(.2, 1.2, .3, 1); }
-#result.reveal .card { opacity: 1; transform: none; }
-#result.lose .card { background: radial-gradient(120% 100% at 50% 0%, #1d3f86 0%, #0e2456 55%, #08142f 100%); border-color: rgba(140, 190, 255, .6); }
-.card .lockup .tri { width: 54px; }
-.card .lockup .word { width: 120px; }
-.card .fest { margin-top: 4px; font-size: clamp(40px, 12vw, 52px); filter: drop-shadow(0 2px 0 rgba(70, 0, 10, .9)) drop-shadow(0 3px 12px rgba(0, 0, 0, .35)); }
-.card .kick { margin-top: 4px; font-size: 14px; font-weight: 800; letter-spacing: .24em; text-transform: uppercase; color: #ffe7a6; }
-.card .kick:empty { display: none; }
-.card .prize { font: 800 clamp(34px, 10.5vw, 44px)/1.1 var(--f-body); color: #fff; margin: 4px 0 2px; text-shadow: 0 3px 0 rgba(60, 0, 10, .65); }
-.card .line { font-size: 15px; font-weight: 600; color: var(--cream); min-height: 1em; }
-.res-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; transition: opacity .5s ease .9s; }
-#result.reveal .res-actions { opacity: 1; }
+/* face down: the gift, in festive red and gold (blue and silver when there is no prize) */
+.back { transform: rotateY(180deg);
+  background: radial-gradient(circle, rgba(255, 207, 90, .1) 1.2px, transparent 1.7px) 0 0 / 14px 14px, radial-gradient(120% 90% at 50% 0%, #d8282e 0%, #a0101e 42%, #5c0814 100%);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, .6), 0 0 70px rgba(255, 130, 40, .45), inset 0 1px 0 rgba(255, 255, 255, .25); }
+#result.big .back { border-color: #fff0b8; box-shadow: 0 22px 50px rgba(0, 0, 0, .6), 0 0 90px rgba(255, 180, 50, .7), inset 0 1px 0 rgba(255, 255, 255, .3); }
+#result.lose .back { border-color: rgba(185, 215, 255, .85);
+  background: radial-gradient(circle, rgba(200, 225, 255, .08) 1.2px, transparent 1.7px) 0 0 / 14px 14px, radial-gradient(120% 90% at 50% 0%, #2c5cc0 0%, #163574 50%, #0a1a40 100%);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, .6), 0 0 50px rgba(60, 130, 255, .3), inset 0 1px 0 rgba(255, 255, 255, .2); }
+#result.lose .back::before { border-color: rgba(185, 215, 255, .4); }
+.kick { font: 800 14px/1 var(--f-body); letter-spacing: .32em; text-transform: uppercase; color: #ffe7a6; }
+.kick:empty { display: none; }
+/* the prize in gold foil, with a glint running across it */
+.prize { margin-top: 6px; font: 800 clamp(48px, 15vw, 62px)/1.02 var(--f-body); letter-spacing: -.01em; text-wrap: balance;
+  background: linear-gradient(100deg, #d99228 0%, #ffd56a 30%, #fffbe8 44%, #ffd56a 58%, #d08a1e 100%) 100% 0 / 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 3px 0 rgba(60, 0, 10, .75)) drop-shadow(0 0 16px rgba(255, 170, 50, .35)); }
+#result.reveal .prize { animation: foil 3.2s ease-in-out .8s infinite; }
+@keyframes foil { 0% { background-position: 100% 0; } 55%, 100% { background-position: 0 0; } }
+#result.lose .prize { font-size: clamp(30px, 9vw, 36px); line-height: 1.12; background: none; color: #fff; filter: drop-shadow(0 2px 0 rgba(0, 10, 40, .7)); }
+#result.lose.reveal .prize { animation: none; }
+.back .fest { margin-top: 4px; font-size: clamp(34px, 10.5vw, 42px); filter: drop-shadow(0 2px 0 rgba(70, 0, 10, .9)) drop-shadow(0 3px 12px rgba(0, 0, 0, .35)); }
+#result.lose .back .fest { filter: drop-shadow(0 2px 0 rgba(0, 10, 40, .9)); }
+.line { margin-top: 4px; font: 600 15px/1.3 var(--f-body); color: var(--cream); text-wrap: balance; }
+.line:empty { display: none; }
+/* "Totally lit!": the whole sky triangle was lit */
+.line.hype { margin-top: 6px; font: 800 17px/1 var(--f-body); letter-spacing: .16em; text-transform: uppercase; color: #fff3c4; text-shadow: 0 0 14px rgba(255, 190, 70, .8); }
+.res-sub { margin-top: 12px; padding-top: 11px; width: 80%; display: flex; align-items: baseline; justify-content: center; gap: 8px; border-top: 1px solid rgba(255, 207, 90, .35);
+  font: 700 15px/1 var(--f-body); letter-spacing: .03em; color: rgba(255, 231, 166, .9); }
+#result.lose .res-sub { border-top-color: rgba(185, 215, 255, .35); }
+.res-sub img { width: 84px; align-self: center; }
+.res-sub b { font-size: 24px; font-weight: 800; letter-spacing: 0; color: #fff; font-variant-numeric: tabular-nums; }
+.newbest { position: absolute; z-index: 2; right: -8px; top: -14px; white-space: nowrap; font: 800 12px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: #2a1200;
+  background: linear-gradient(180deg, #fff3c0, var(--gold) 55%, var(--gold-deep)); padding: 7px 11px; border-radius: 999px; transform: rotate(7deg); display: none; box-shadow: 0 4px 16px rgba(255, 160, 40, .6); }
+.newbest.on { display: block; animation: slam .42s cubic-bezier(.2, 1.7, .4, 1); }
+/* petals thrown over a prize: marigold, rose and jasmine, some behind the card and a few close by, in front */
+.petals { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+#petalsF { z-index: 2; }
+.petals i { position: absolute; top: 0; border-radius: 60% 0 60% 60%; box-shadow: inset -2px -2px 4px rgba(60, 0, 0, .3); will-change: transform;
+  animation: fall var(--d) linear var(--w) both, sway calc(var(--d) / 2.5) ease-in-out var(--w) infinite alternate; }
+@keyframes fall { from { transform: translateY(-40px) rotate(var(--r)) rotateX(0); } to { transform: translateY(calc(100vh + 40px)) rotate(calc(var(--r) + 300deg)) rotateX(720deg); } }
+@keyframes sway { from { translate: calc(var(--sw) * -1) 0; } to { translate: var(--sw) 0; } }
+/* for the promoter: a quiet strip that arrives once the prize is showing */
+.res-actions { width: 100%; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
+  opacity: 0; transform: translateY(14px); transition: opacity .5s ease 1s, transform .6s cubic-bezier(.2, .9, .3, 1) 1s; }
+#result.reveal .res-actions { opacity: 1; transform: none; }
+#result:not(.reveal) .res-actions button { pointer-events: none; }
 .collect { font-size: 15px; font-weight: 600; color: rgba(255, 244, 214, .85); min-height: 1em; }
 .collect:empty { display: none; }
 /* the live proof line: a pulsing dot, the ticking clock, the stall and the result code */
 .verify { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; font: 600 14px/1.2 var(--f-body); color: var(--cream); font-variant-numeric: tabular-nums;
-  padding: 7px 14px; border-radius: 999px; background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 207, 90, .25); }
+  padding: 7px 14px; border-radius: 999px; background: rgba(10, 8, 24, .7); border: 1px solid rgba(255, 207, 90, .25); }
 .verify i { width: 8px; height: 8px; border-radius: 50%; background: #3ad06b; box-shadow: 0 0 8px #3ad06b; animation: live 1s ease-in-out infinite; }
 @keyframes live { 50% { opacity: .25; } }
 .verify b { font-weight: 800; letter-spacing: .08em; color: var(--gold); }
@@ -183,21 +253,19 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 #result.lose #btnGiven { display: none; }
 /* the promoter's stamp on a card whose prize has been handed over */
 /* (it takes the place of the small line under the prize, so it never covers the prize or the TOTAL lockup) */
-.stamp { display: none; margin: 6px auto 0; width: max-content; transform: rotate(-3deg) scale(1.5); opacity: 0; pointer-events: none;
+.stamp { display: none; margin: 8px auto 0; width: max-content; transform: rotate(-3deg) scale(1.5); opacity: 0; pointer-events: none;
   font: 800 13px/1.15 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: #fff; text-align: center;
-  padding: 5px 12px; border: 2.5px solid #fff; border-radius: 8px; background: rgba(20, 140, 70, .7); transition: opacity .2s ease, transform .35s cubic-bezier(.2, 1.6, .4, 1); }
+  padding: 5px 12px; border: 2.5px solid #fff; border-radius: 8px; background: rgba(20, 140, 70, .75); transition: opacity .2s ease, transform .35s cubic-bezier(.2, 1.6, .4, 1); }
 .stamp.on { display: block; opacity: 1; transform: rotate(-3deg) scale(1); }
 .card.given .line { display: none; }
-.res-score { position: relative; }
-.newbest { position: absolute; right: -78px; top: -4px; white-space: nowrap; font: 800 12px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: #2a1200; background: var(--gold);
-  padding: 6px 9px; border-radius: 999px; transform: rotate(8deg); display: none; box-shadow: 0 4px 14px rgba(255, 160, 40, .5); }
-.newbest.on { display: block; animation: slam .42s cubic-bezier(.2, 1.7, .4, 1); }
 
-/* how to play, on the landing */
-.howto { display: flex; gap: 8px; width: 100%; max-width: 380px; }
-.howto div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 6px 8px; border-radius: 14px; background: rgba(10, 8, 24, .62); border: 1px solid rgba(255, 207, 90, .25); }
-.howto svg { width: 32px; height: 32px; }
-.howto span { font: 700 13px/1.2 var(--f-body); color: var(--cream); text-wrap: balance; }
+/* how to play, one tip per count of the 3-2-1, between the number and the gem */
+.tips { position: absolute; left: 0; right: 0; top: 48%; display: flex; justify-content: center; pointer-events: none; }
+.tips > div { display: none; align-items: center; gap: 10px; padding: 10px 18px 10px 12px; border-radius: 999px; background: rgba(10, 8, 24, .8); border: 1px solid rgba(255, 207, 90, .45); box-shadow: 0 6px 24px rgba(0, 0, 0, .45); }
+.tips > div.on { display: flex; animation: tipin .32s cubic-bezier(.2, 1.4, .4, 1); }
+.tips svg { width: 34px; height: 34px; flex: none; }
+.tips span { font: 800 17px/1.15 var(--f-body); color: var(--cream); white-space: nowrap; }
+@keyframes tipin { 0% { opacity: 0; transform: translateY(10px) scale(.92); } 100% { opacity: 1; transform: none; } }
 .best { margin: 0; font: 700 14px/1 var(--f-body); color: var(--gold); min-height: 1em; text-shadow: 0 2px 8px rgba(0, 0, 0, .8); }
 .best:empty { display: none; }
 
@@ -235,8 +303,9 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 @media (orientation: landscape) and (max-height: 500px) { #rotate { display: flex; } }
 #dbg { position: absolute; left: 8px; bottom: 8px; z-index: 60; font: 11px/1.35 ui-monospace, monospace; color: #9f9; background: rgba(0, 0, 0, .6); padding: 4px 6px; border-radius: 6px; white-space: pre; pointer-events: none; }
 /* short phones: the 3D scene above already shows the TOTAL triangle and wordmark, so the card drops its copy */
-@media (max-height: 740px) { .card { padding: 12px 14px; } .card .lockup { display: none; } .card .fest { font-size: 40px; margin-top: 0; } .res-num { font-size: 60px; } .res-tri { width: 50px; } .res-panel { gap: 10px; } .cta { padding: 16px 44px; }
-  .collect { display: none; } .res-btns .cta { padding: 16px 26px; } .tag { font-size: 17px; } .howto span { font-size: 12px; } .howto svg { width: 26px; height: 26px; } .fest { margin-top: 8px; } }
+@media (max-height: 740px) { .face { padding: 18px 16px 14px; } .prize { font-size: 46px; } .back .fest { font-size: 34px; }
+  .res-num { font-size: 76px; } .front .res-word { width: 140px; } .res-sub { margin-top: 8px; padding-top: 8px; } #result { gap: 10px; } .cta { padding: 16px 44px; }
+  .collect { display: none; } .res-btns .cta { padding: 16px 26px; } .tag { font-size: 17px; } .fest { margin-top: 8px; } }
 @media (prefers-reduced-motion: reduce) { .cta::after, .hint svg, #loading img { animation: none !important; } }
 </style>
 <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }</script>
@@ -252,12 +321,6 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
     </div>
     <div class="landing-foot">
       <p class="tag" data-t="tagline">Light the diyas and win exciting gifts</p>
-      <!-- how to play, in three glances: most people play once, so they need it before the run, not during it -->
-      <div class="howto">
-        <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 20h24M8 20l5-5M8 20l5 5M32 20l-5-5M32 20l-5 5" stroke="#ffcf5a" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="20" r="4.5" fill="#fff4d6"/></svg><span data-t="how1">Swipe to light the diyas</span></div>
-        <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 5c4 7 10 10 10 18a10 10 0 0 1-20 0c0-5 3-8 5-11 1 4 3 5 5 5-1-5-1-8 0-12z" fill="#ff8a2a"/><path d="M20 22c2 3 4 4 4 7a4 4 0 0 1-8 0c0-2 2-4 4-7z" fill="#fff3c4"/></svg><span data-t="how2">Light many in a row: On Fire ×2</span></div>
-        <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M14 33l6-18 6 18z" fill="#b8402a"/><path d="M20 15l-4-8M20 15l1-9M20 15l5-7M20 15l-8-3M20 15l8-2" stroke="#fff3c4" stroke-width="1.8" stroke-linecap="round"/><circle cx="20" cy="22" r="15" fill="none" stroke="#ff5a3a" stroke-width="2.2"/><path d="M9 33L31 11" stroke="#ff5a3a" stroke-width="2.6" stroke-linecap="round"/></svg><span data-t="how3">Dodge the firecrackers</span></div>
-      </div>
       <p class="secs" data-t="seconds">You have 30 seconds!</p>
       <button class="cta" id="btnGo" data-t="go">Let's GO!</button>
       <p class="best" id="best"></p>
@@ -266,12 +329,18 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 
   <div id="hud" aria-hidden="true">
     <div class="hud-bar"><b class="secs-left" id="secsLeft">30</b><div class="timer" id="timer"><i id="timerFill"></i></div></div>
-    <div class="score"><img src="assets/brand/total-triangle.png" alt=""><b id="score">0</b></div>
+    <div class="score"><img src="assets/brand/total-wordmark.png" alt="TOTAL"><b id="score">0</b></div>
     <div class="firemeter" id="fire"><span id="fireLabel" data-t="fireMeter">Fire</span><div class="fire-bar"><i id="fireFill"></i></div></div>
     <div class="combo" id="combo"><b id="comboN">0</b><span data-t="combo">combo</span></div>
     <div class="pops" id="pops"></div>
     <div class="badge" id="badge"></div>
     <div class="count" id="count"></div>
+      <!-- how to play, one tip per count of the 3-2-1: the countdown is dead time, and the start screen stays clear for the gem -->
+    <div class="tips" id="tips">
+      <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 20h24M8 20l5-5M8 20l5 5M32 20l-5-5M32 20l-5 5" stroke="#ffcf5a" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="20" r="4.5" fill="#fff4d6"/></svg><span data-t="how1">Swipe to light the diyas</span></div>
+      <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 5c4 7 10 10 10 18a10 10 0 0 1-20 0c0-5 3-8 5-11 1 4 3 5 5 5-1-5-1-8 0-12z" fill="#ff8a2a"/><path d="M20 22c2 3 4 4 4 7a4 4 0 0 1-8 0c0-2 2-4 4-7z" fill="#fff3c4"/></svg><span data-t="how2">Light many in a row: On Fire ×2</span></div>
+      <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M14 33l6-18 6 18z" fill="#b8402a"/><path d="M20 15l-4-8M20 15l1-9M20 15l5-7M20 15l-8-3M20 15l8-2" stroke="#fff3c4" stroke-width="1.8" stroke-linecap="round"/><circle cx="20" cy="22" r="15" fill="none" stroke="#ff5a3a" stroke-width="2.2"/><path d="M9 33L31 11" stroke="#ff5a3a" stroke-width="2.6" stroke-linecap="round"/></svg><span data-t="how3">Dodge the firecrackers</span></div>
+    </div>
     <div class="hint" id="hint">
       <svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><circle cx="32" cy="30" r="13" fill="rgba(255,207,90,.25)"/><path d="M28 50V30a4 4 0 0 1 8 0v8l7 2a4 4 0 0 1 3 4.5L44 54H30z" fill="#fff4d6" stroke="#2a1200" stroke-width="2" stroke-linejoin="round"/></svg>
       <span data-t="hint" id="hintText">Drag to move your flame</span>
@@ -309,26 +378,34 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
   </section>
 
   <section class="screen" id="result" aria-label="Result">
-    <div class="res-panel">
-      <div class="res-score">
-        <img class="res-tri" src="assets/brand/total-triangle.png" alt="">
-        <div><div class="res-label" data-t="lit">Triangles lit</div><div class="res-num" id="resNum">0</div></div>
-        <div class="newbest" id="newBest" data-t="newBest">New best today!</div>
+    <div class="petals" id="petalsB" aria-hidden="true"></div>
+    <div class="gift-wrap">
+      <div class="rays" aria-hidden="true"></div>
+      <div class="newbest" id="newBest" data-t="newBest">New best today!</div>
+      <!-- one card, two faces: the score counts up on the front, then it turns over to show the prize -->
+      <div class="gift">
+        <!-- the score reads as one phrase: TOTAL 82 diyas lit -->
+        <div class="face front">
+          <img class="res-word" src="assets/brand/total-wordmark.png" alt="TOTAL">
+          <div class="res-num" id="resNum">0</div>
+          <div class="res-label" data-t="lit">diyas lit</div>
+        </div>
+        <div class="face back card">
+          <div class="kick" id="pKick"></div>
+          <div class="prize" id="pTitle"></div>
+          <div class="fest" data-t="greet">Happy Diwali</div>
+          <div class="line" id="pLine"></div>
+          <div class="stamp" id="stamp"></div>
+          <div class="res-sub"><img class="res-word" src="assets/brand/total-wordmark.png" alt="TOTAL"><b id="resNum2">0</b><span data-t="lit">diyas lit</span></div>
+        </div>
       </div>
-      <div class="card">
-        <div class="lockup"><img class="tri" src="assets/brand/total-triangle.png" alt=""><img class="word" src="assets/brand/total-wordmark.png" alt="TOTAL"></div>
-        <div class="fest" data-t="greet">Happy Diwali</div>
-        <div class="kick" id="pKick"></div>
-        <div class="prize" id="pTitle"></div>
-        <div class="line" id="pLine"></div>
-        <div class="stamp" id="stamp"></div>
-      </div>
-      <div class="res-actions">
-        <!-- live proof for the promoter: the clock ticks, so a screenshot shown again later is plainly stale -->
-        <div class="verify" id="verify"><i></i><span id="vTime"></span><span id="vStall"></span><b id="vCode"></b></div>
-        <div class="collect" id="collect"></div>
-        <div class="res-btns"><button class="ghost" id="btnGiven" data-t="given">Prize given</button><button class="cta" id="btnNext" data-t="next">Next player</button></div>
-      </div>
+    </div>
+    <div class="petals" id="petalsF" aria-hidden="true"></div>
+    <div class="res-actions">
+      <!-- live proof for the promoter: the clock ticks, so a screenshot shown again later is plainly stale -->
+      <div class="collect" id="collect"></div>
+      <div class="verify" id="verify"><i></i><span id="vTime"></span><span id="vStall"></span><b id="vCode"></b></div>
+      <div class="res-btns"><button class="ghost" id="btnGiven" data-t="given">Prize given</button><button class="cta" id="btnNext" data-t="next">Next player</button></div>
     </div>
   </section>
 

@@ -21,7 +21,7 @@
   - A screenshot can't be passed off as a new win: its clock has stopped.
 - **When you hand a prize over,** tap **Prize given**. The card is stamped with the time, and today's counts stay right.
 - Tap **Next player** for the next person.
-- **"Today's best" on the start screen** gives the queue a score to beat.
+- **"Best TOTAL today" on the start screen** gives the queue a score to beat.
 
 ## End of the shift
 - Open **Promoter tools** (hold the TOTAL logo). It shows:

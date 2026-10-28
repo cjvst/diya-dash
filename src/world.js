@@ -143,8 +143,9 @@ function buildSide(side, act, seed, atlas) {
         if (rj() < 0.6) jhalar(X + inward * (d + 0.03), y1 - 0.16, zc, sw - 0.3, 0.45 + rj() * 0.4, 0);
         if (r() < 0.5) decor.lanterns.push({ x: X + inward * (d - 0.25), y: y1 - 0.55, z: zc + (r() - 0.5) * sw * 0.5, kind: (r() * 3) | 0, thr: r() * 0.5, side });
       }
-      // signboard: TOTAL boards on many shops, more of them in the bazaar
-      const row = r() < (act > 0 ? 0.62 : 0.45) ? (r() * 3) | 0 : 3 + ((r() * 3) | 0);
+      // signboard: a TOTAL board or a TOTAL-sponsored paan shop on about one shop in three (a little more in the
+      // bazaar), the street's own shops on the rest; the sky triangle is the brand's big moment, not the walls
+      const row = r() < (act > 0 ? 0.4 : 0.28) ? (r() * 3) | 0 : 3 + ((r() * 3) | 0);
       const bwid = Math.min(w - 0.6, 4.8), by0 = 3.72, by1 = by0 + bwid / 6.4;
       const rv1 = 1 - row / BOARD_ROWS, rv0 = 1 - (row + 1) / BOARD_ROWS;
       wallQuad(brd, zc + bwid / 2, zc - bwid / 2, by0, by1, 0.1, WHITE, [[0, rv0], [1, rv0], [1, rv1], [0, rv1]]);
@@ -251,6 +252,9 @@ export class Street {
               vec3 d = uSLPos[ i ].xyz - vSLW; float dd = dot( d, d ) + 0.05;
               float w = 1.0 - dd * uSLPos[ i ].w;
               if ( w <= 0.0 ) continue;             // out of this lamp's reach (true for most lamps at most pixels)
+              // the awning and the sunshade over a lamp keep most of its light off the floors above, so upper
+              // walls stay dark and their lit windows show
+              w *= 1.0 - 0.7 * smoothstep( 0.8, 3.0, -d.y );
               sAcc += uSLCol[ i ].rgb * ( w * w * max( dot( sn, d ), 0.0 ) * inversesqrt( dd ) / ( 1.0 + dd * uSLCol[ i ].w ) );
             }
             reflectedLight.directDiffuse += sAcc * material.diffuseColor;
@@ -260,7 +264,21 @@ export class Street {
     // ground: one paving strip that follows the camera in whole-tile steps, so the stones never slide
     const gg = new THREE.PlaneGeometry(120, AHEAD + 36, 1, 1); gg.rotateX(-Math.PI / 2); gg.translate(0, 0, -(AHEAD + 36) / 2 + 18);
     const uv = gg.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (120 / 3.0), uv.getY(i) * ((AHEAD + 36) / 3.0));
-    this.ground = new THREE.Mesh(gg, new THREE.MeshPhongMaterial({ map: tex.paving.map, normalMap: tex.paving.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), shininess: 18, specular: 0x2a2622 }));
+    const groundMat = new THREE.MeshPhongMaterial({ map: tex.paving.map, normalMap: tex.paving.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), shininess: 18, specular: 0x2a2622 });
+    // wear across the stones at a scale far larger than a tile (worn paths, damp patches, swept and unswept), so
+    // the open chowk never shows the paving repeat; fixed to the world, so it never slides with the strip
+    groundMat.onBeforeCompile = sh => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vGW;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\n  vGW = ( modelMatrix * vec4( transformed, 1.0 ) ).xz;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+        varying vec2 vGW;
+        float gH( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+        float gN( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+          return mix( mix( gH( i ), gH( i + vec2( 1.0, 0.0 ) ), f.x ), mix( gH( i + vec2( 0.0, 1.0 ) ), gH( i + vec2( 1.0, 1.0 ) ), f.x ), f.y ); }`)
+        .replace('#include <map_fragment>', `#include <map_fragment>
+        diffuseColor.rgb *= 0.7 + 0.4 * gN( vGW * 0.09 ) + 0.16 * ( gN( vGW * 0.41 + 17.0 ) - 0.5 );`);
+    };
+    this.ground = new THREE.Mesh(gg, groundMat);
     // drawn after the houses, so the stretch of ground hidden behind them is never shaded
     this.ground.frustumCulled = false; this.ground.renderOrder = 1; scene.add(this.ground);
     // pre-built side variants for each act
@@ -601,17 +619,22 @@ function makePeopleMesh(atlas, cap, glow) {
   const aA = new THREE.InstancedBufferAttribute(A, 4), aB = new THREE.InstancedBufferAttribute(B, 2);
   g.setAttribute('aA', aA); g.setAttribute('aB', aB); g.instanceCount = cap;
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uTex: { value: atlas }, uGlow: glow, uTime: { value: 0 }, uFog: { value: 0.0135 }, uFogCol: { value: new THREE.Color() } },
+    uniforms: { uTex: { value: atlas }, uGlow: glow, uTime: { value: 0 }, uFog: { value: 0.0135 }, uFogCol: { value: new THREE.Color() }, uCheer: { value: 0 }, uPlayerZ: { value: 0 } },
     vertexShader: /* glsl */`
       attribute vec4 aA; attribute vec2 aB;            // x, z, scale, mirror | figure, sway phase
-      uniform float uTime, uFog; varying vec2 vUv; varying float vF;
+      uniform float uTime, uFog, uCheer, uPlayerZ; varying vec2 vUv; varying float vF;
       void main() {
         vec2 to = cameraPosition.xz - aA.xy; vec2 right = normalize(vec2(to.y, -to.x));
         float H = 1.7 * aA.z, W = 0.85 * aA.z;
-        float sway = sin(uTime * 1.3 + aB.y) * 0.03 * position.y;
-        vec3 p = vec3(aA.x, 0.0, aA.y) + vec3(right.x, 0.0, right.y) * (position.x * W + sway) + vec3(0.0, position.y * H, 0.0);
+        // the crowd cheers for the player: the stretch of street just ahead of the flame, most of them,
+        // arms up (the cheering half of the atlas) and hopping
+        float near = 1.0 - smoothstep(4.0, 24.0, abs(uPlayerZ - aA.y - 8.0));
+        float ex = uCheer * near * step(0.28, fract(aB.y * 7.31 + 0.13));
+        float hop = ex > 0.35 ? abs(sin(uTime * 8.5 + aB.y * 3.0)) * 0.12 * aA.z : 0.0;
+        float sway = sin(uTime * (1.3 + ex * 4.0) + aB.y) * (0.03 + ex * 0.04) * position.y;
+        vec3 p = vec3(aA.x, hop, aA.y) + vec3(right.x, 0.0, right.y) * (position.x * W + sway) + vec3(0.0, position.y * H, 0.0);
         vec4 mv = viewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
-        vUv = vec2(((aA.w < 0.0 ? 1.0 - uv.x : uv.x) + aB.x) / 8.0, uv.y);
+        vUv = vec2(((aA.w < 0.0 ? 1.0 - uv.x : uv.x) + aB.x + (ex > 0.35 ? 8.0 : 0.0)) / 16.0, uv.y);
         float d = -mv.z; vF = exp(-uFog * uFog * d * d);
       }`,
     fragmentShader: /* glsl */`

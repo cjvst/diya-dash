@@ -6,17 +6,19 @@ export const CONFIG = {
   // Prize tiers, checked top to bottom: the first whose `min` the score reaches wins.
   // `key` names the prize in i18n.js; null means no prize. Calibrated with simulate() (see README).
   TIERS: [
-    { min: 122, key: 'pack' },
-    { min: 100, key: 'sticks3' },
-    { min: 78, key: 'sticks2' },
-    { min: 50, key: 'stick1' },
+    { min: 124, key: 'pack' },
+    { min: 102, key: 'sticks3' },
+    { min: 80, key: 'sticks2' },
+    { min: 52, key: 'stick1' },
     { min: 0, key: null },
   ],
   GOLD_VALUE: 3, // triangles for a golden diya
   // On Fire: catches fill the meter (a golden diya counts twice); when it is full the flame goes white-hot
   // for `dur` seconds: points x`mult`, a wider catch. A miss knocks the meter back, a hazard empties it.
   FEVER: { fill: 8, dur: 5, mult: 2, reach: 1.35, miss: 0.25 },
-  RUSH_AT: 23,   // the final rush: the run speeds up and the diyas come in golden lanes
+  // the final rush: the run speeds up and the diyas come in golden lanes. It starts on a bar line of the music
+  // (the downbeat of bar 13 at 130 BPM, see GRID0 below), where the score changes key.
+  RUSH_AT: 0.05 + 12 * 4 * 60 / 130,
   NEAR_BONUS: 2, // triangles for skimming past a firecracker without touching it
 };
 
@@ -31,16 +33,24 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const TAU = Math.PI * 2;
 
-// Speed: 9 m/s rising to 15 by the rush, a surge to 19 over two seconds, then flat out to the end.
-const V0 = 9, V1 = 15, VR = 19, RT = CONFIG.RUSH_AT, RAMP = 2;
-export const speedAt = t => (t < RT ? V0 + (V1 - V0) * clamp(t, 0, RT) / RT : t < RT + RAMP ? V1 + (VR - V1) * (t - RT) / RAMP : VR);
-export const distanceAt = t => {
-  const T = clamp(t, 0, CONFIG.DURATION), a = Math.min(T, RT);
-  let d = V0 * a + (V1 - V0) * a * a / (2 * RT);
-  if (T > RT) { const b = Math.min(T - RT, RAMP); d += V1 * b + (VR - V1) * b * b / (2 * RAMP); }
-  if (T > RT + RAMP) d += VR * (T - RT - RAMP);
-  return d;
+// Speed: GO is a launch, from a quarter speed to 9 m/s in under a second (a shove in the back, not a stroll);
+// then 9 m/s rising to 15 by the rush, a surge to 19 over two seconds, and flat out to the end.
+const V0 = 9, V1 = 15, VR = 19, RT = CONFIG.RUSH_AT, RAMP = 2, LAUNCH = 0.85;
+const cruise = t => (t < RT ? V0 + (V1 - V0) * t / RT : t < RT + RAMP ? V1 + (VR - V1) * (t - RT) / RAMP : VR);
+export const speedAt = t => { t = clamp(t, 0, CONFIG.DURATION); const k = t < LAUNCH ? t / LAUNCH : 1; return cruise(t) * (0.25 + 0.75 * k * k * (3 - 2 * k)); };
+// distance by time, integrated once into a table at millisecond steps (and searched back for time by distance)
+const STEP = 0.001, NS = Math.round(CONFIG.DURATION / STEP), DIST = new Float64Array(NS + 1);
+for (let i = 1; i <= NS; i++) DIST[i] = DIST[i - 1] + 0.5 * (speedAt((i - 1) * STEP) + speedAt(i * STEP)) * STEP;
+export const distanceAt = t => { const x = clamp(t, 0, CONFIG.DURATION) / STEP, i = Math.min(NS - 1, Math.floor(x)); return DIST[i] + (DIST[i + 1] - DIST[i]) * (x - i); };
+export const timeAt = s => {
+  let lo = 0, hi = NS;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (DIST[m] < s) lo = m; else hi = m; }
+  return (lo + (s - DIST[lo]) / Math.max(1e-9, DIST[hi] - DIST[lo])) * STEP;
 };
+// The music's grid: 130 BPM in eighth notes, the beat starting 50 ms after GO (see Sound.beginRun). Every diya
+// and firecracker passes the flame on this grid, so catches, bells and near misses land in time with the music.
+export const BPM = 130, GRID = 60 / BPM / 2, GRID0 = 0.05;
+const onGrid = k => GRID0 + k * GRID;
 export const COURSE_END = distanceAt(CONFIG.DURATION);
 export const RUSH_S = distanceAt(RT);
 // The run has three acts: dark gali, bazaar, the approach to the chowk (whose last stretch is the rush).
@@ -105,19 +115,25 @@ export function buildCourse(seed) {
     } else lastX = endX;
     s = endS + gap;
   }
-  // the final rush: golden lanes, close together, a gold diya every third, taken at full speed
-  s = Math.max(s, RUSH_S + 2);
+  // put everything so far on the music's grid: each diya on the nearest eighth note (never two on one),
+  // each firecracker on the nearest eighth too
+  const snap = (list, gap) => { let prev = -9; for (const d of list) { let k = Math.round((timeAt(d.s) - GRID0) / GRID); if (k < prev + gap) k = prev + gap; prev = k; d.s = distanceAt(onGrid(k)); } };
+  snap(out, 1); snap(hz, 0);
+  // the final rush: golden lanes, a diya on every eighth note (a gold one every third), taken flat out,
+  // with a quarter-bar rest between lanes
+  let k8 = Math.max(Math.ceil((timeAt(RUSH_S) - GRID0) / GRID) + 2, Math.ceil((timeAt(out.length ? out[out.length - 1].s : 0) - GRID0) / GRID) + 3);
   let c = clamp(lastX, -1, 1);
-  while (s < COURSE_END - 6) {
-    const n = 6 + ((r() * 3) | 0), A = 0.8 + r() * 0.7, ph = r() * TAU, k = 0.5 + r() * 0.25, sp = 5.4;
-    for (let i = 0; i < n; i++) out.push({ x: clamp(c + A * Math.sin(ph + i * k), -ROAD_X + 0.2, ROAD_X - 0.2), s: s + i * sp, gold: i % 3 === 2 });
-    const endX = clamp(c + A * Math.sin(ph + (n - 1) * k), -ROAD_X, ROAD_X), endS = s + (n - 1) * sp;
-    if (r() < 0.9) hz.push({ x: clamp(endX + (r() - 0.5) * 0.3, -1.9, 1.9), s: endS + 5, kind: r() < 0.5 ? 0 : 1 });
+  while (distanceAt(onGrid(k8)) < COURSE_END - 6) {
+    const n = 6 + ((r() * 3) | 0), A = 0.8 + r() * 0.7, ph = r() * TAU, k = 0.42 + r() * 0.2;
+    for (let i = 0; i < n; i++) out.push({ x: clamp(c + A * Math.sin(ph + i * k), -ROAD_X + 0.2, ROAD_X - 0.2), s: distanceAt(onGrid(k8 + i)), gold: i % 3 === 2 });
+    const endX = clamp(c + A * Math.sin(ph + (n - 1) * k), -ROAD_X, ROAD_X), endK = k8 + n - 1;
+    if (r() < 0.9) hz.push({ x: clamp(endX + (r() - 0.5) * 0.3, -1.9, 1.9), s: distanceAt(onGrid(endK + 2)), kind: r() < 0.5 ? 0 : 1 });
     // and a firecracker mid-lane, off to one side: hold your line past it
-    if (n >= 7 && r() < 0.6) { const j = 3 + ((r() * 2) | 0), xj = c + A * Math.sin(ph + j * k); hz.push({ x: clamp(xj + (xj > 0 ? -1 : 1) * (HIT_R + 0.55), -2, 2), s: s + j * sp + 2.7, kind: 1 }); }
+    if (n >= 7 && r() < 0.6) { const j = 3 + ((r() * 2) | 0), xj = c + A * Math.sin(ph + j * k); hz.push({ x: clamp(xj + (xj > 0 ? -1 : 1) * (HIT_R + 0.55), -2, 2), s: distanceAt(onGrid(k8 + j) + GRID / 2), kind: 1 }); }
     c = clamp(endX + (endX > 0 ? -1.5 : 1.5), -1.4, 1.4);
-    s = endS + 10;
+    k8 = endK + 4;
   }
+  hz.sort((a, b) => a.s - b.s);
   return { diyas: out.filter(d => d.s < COURSE_END - 4), hazards: hz.filter(h => h.s < COURSE_END - 4) };
 }
 

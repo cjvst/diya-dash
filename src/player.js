@@ -30,15 +30,17 @@ export class Player {
     this.gem = new THREE.Mesh(geo, [face, sides]);
     this.root = new THREE.Group(); this.root.add(this.gem); scene.add(this.root);
     this.light = new THREE.PointLight(0xffa04a, 6, 14, 2); scene.add(this.light);
-    this.x = 0; this.z = 0; this.vx = 0; this.level = 0; this.levelT = 1; this.shown = 1;
+    this.x = 0; this.z = 0; this.vx = 0; this.level = 0; this.levelT = 1; this.shown = 1; this.kickT = 1;
   }
+  // every catch makes the flame jump, on the beat
+  kick() { this.kickT = 0; }
   // tip of the main flame, for streaks
   flameBase(out) { return out.set(this.root.position.x, this.root.position.y + GEM_H * 0.5 + 0.02, this.root.position.z); }
   update(dt, time, x, z, level, flames, pools, alpha = 1, lift = 0) {
     const prevX = this.x; this.x = x; this.z = z;
     const vx = dt > 0 ? (x - prevX) / dt : 0; this.vx += (vx - this.vx) * Math.min(1, dt * 14);
     if (level !== this.level) { this.level = level; this.levelT = 0; }
-    this.levelT += dt;
+    this.levelT += dt; this.kickT += dt;
     const y = 0.95 + lift + Math.sin(time * 3.1) * 0.035;
     this.root.position.set(x, y, z);
     this.root.rotation.set(0, -this.vx * 0.04, -this.vx * 0.05);
@@ -46,7 +48,7 @@ export class Player {
     if (!this.root.visible) { this.light.intensity = 0; return; }
     // flame grows smoothly to the new level, with a pop when it levels up
     const [fs, fh, li] = LEVEL_FLAME[level];
-    const pop = this.levelT < 0.4 ? Math.sin((this.levelT / 0.4) * Math.PI) * 0.35 : 0;
+    const pop = (this.levelT < 0.4 ? Math.sin((this.levelT / 0.4) * Math.PI) * 0.35 : 0) + (this.kickT < 0.16 ? Math.sin((this.kickT / 0.16) * Math.PI) * 0.28 : 0);
     this.shown += (fs - this.shown) * Math.min(1, dt * 6);
     const size = this.shown * (1 + pop), lean = Math.max(-0.7, Math.min(0.7, -this.vx * 0.08));
     const fx = x + Math.sin(-this.vx * 0.05) * 0.1, fy = y + GEM_H * 0.5 + 0.02;

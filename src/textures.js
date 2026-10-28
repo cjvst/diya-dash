@@ -189,8 +189,9 @@ function drawFacade(c, e, X, Y, W, H, r, paint, shop, grime, fine) {
 
 function drawWindow(c, e, x, y, w, h, r, lit, isDoor, ground = false) {
   // frame, dark glass, shutters, grille; the glass area is what lights up
+  // (a weathered frame, not a bright one: a dark window should read as a dark window, not an outline)
   c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(x - 6, y - 6, w + 12, h + 14);
-  c.fillStyle = '#e7dfcf'; c.fillRect(x - 4, y - 4, w + 8, h + 8);
+  c.fillStyle = '#8f8576'; c.fillRect(x - 4, y - 4, w + 8, h + 8);
   // the room behind the glass: a painted wall, a ceiling shadow, curtains drawn part way.
   // Unlit at night it reads dark; when the light comes on these colours glow through.
   const room = pick(r, ['#c99a6a', '#b88a5a', '#d8b98a', '#9fb0b8', '#c9a07a']);
@@ -203,9 +204,11 @@ function drawWindow(c, e, x, y, w, h, r, lit, isDoor, ground = false) {
     c.fillStyle = 'rgba(0,0,0,.22)'; for (let k = 1; k < 5; k++) c.fillRect(cx0 + (k * cw) / 5, y + 2, 2, h - 2);
   }
   if (r() < 0.35) { c.fillStyle = 'rgba(30,20,15,.55)'; c.beginPath(); c.ellipse(x + w * (0.4 + r() * 0.2), y + h * 0.75, w * 0.12, h * 0.3, 0, Math.PI, 0); c.fill(); } // someone at home
-  const thr = r() < 0.12 ? 0 : 0.03 + r() * 0.92;            // a few stay dark all night
+  // it is Diwali: a third of the homes are lit from the start, the rest come on as the street lights up,
+  // and a few stay dark all night
+  const thr = r() < 0.1 ? 0 : r() < 0.33 ? 0.02 + r() * 0.06 : 0.1 + r() * 0.85;
   if (thr > 0) lit(x, y, w, h, thr, 0.6 + r() * 0.35, r() < 0.3 ? 0.85 : 0.05);
-  c.strokeStyle = '#e7dfcf'; c.lineWidth = 3; c.beginPath(); c.moveTo(x + w / 2, y); c.lineTo(x + w / 2, y + h); if (!isDoor) { c.moveTo(x, y + h * 0.45); c.lineTo(x + w, y + h * 0.45); } c.stroke();
+  c.strokeStyle = '#8f8576'; c.lineWidth = 3; c.beginPath(); c.moveTo(x + w / 2, y); c.lineTo(x + w / 2, y + h); if (!isDoor) { c.moveTo(x, y + h * 0.45); c.lineTo(x + w, y + h * 0.45); } c.stroke();
   if (ground || r() < 0.5) { // iron grille
     c.strokeStyle = 'rgba(20,20,20,.85)'; c.lineWidth = 1.5; c.beginPath();
     for (let gx = x + 6; gx < x + w; gx += 9) { c.moveTo(gx, y); c.lineTo(gx, y + h); }
@@ -223,18 +226,25 @@ function drawWindow(c, e, x, y, w, h, r, lit, isDoor, ground = false) {
 export const BOARD_ROWS = 6;
 export function makeBoardAtlas(wordmark, triangle, aniso) {
   const W = 1024, RH = 160, c0 = mk(W, RH * BOARD_ROWS), c = c0.getContext('2d');
-  const white = recolor(wordmark, '#ffffff'), black = recolor(wordmark, '#111111');
+  const white = recolor(wordmark, '#ffffff');
   const board = (row, bg, fn) => { const y = row * RH; c.save(); c.translate(0, y); c.beginPath(); c.rect(0, 0, W, RH); c.clip(); bg(); fn(); c.restore(); };
   const logo = (img, x, y, h) => c.drawImage(img, x, y, (h * img.width) / img.height, h);
   // 0: TOTAL red, backlit
   board(0, () => { const g = c.createLinearGradient(0, 0, 0, RH); g.addColorStop(0, '#e2262c'); g.addColorStop(1, '#8a0e16'); c.fillStyle = g; c.fillRect(0, 0, W, RH); c.strokeStyle = '#ffcf5a'; c.lineWidth = 8; c.strokeRect(6, 6, W - 12, RH - 12); },
     () => { logo(triangle, 70, 30, 100); logo(white, 300, 52, 58); });
-  // 1: TOTAL white with blue triangle and a red rule
-  board(1, () => { c.fillStyle = '#f4f2ee'; c.fillRect(0, 0, W, RH); c.fillStyle = '#c4161c'; c.fillRect(0, RH - 26, W, 26); },
-    () => { logo(triangle, 70, 22, 96); logo(black, 300, 44, 58); });
-  // 2: TOTAL blue
-  board(2, () => { const g = c.createLinearGradient(0, 0, W, 0); g.addColorStop(0, '#0b3d91'); g.addColorStop(1, '#2f7cff'); c.fillStyle = g; c.fillRect(0, 0, W, RH); },
-    () => { logo(white, 230, 50, 60); logo(triangle, 790, 30, 100); });
+  // 1-2: paan shops with a TOTAL-sponsored board, the way they really look in a bazaar: the shop's own name
+  // across the board and the brand on a panel at one end
+  const sponsored = (row, panel, bg, fg, title, sub) => board(row, () => {
+    c.fillStyle = bg; c.fillRect(0, 0, W, RH); c.fillStyle = panel; c.fillRect(0, 0, 300, RH);
+    c.fillStyle = 'rgba(255,207,90,.9)'; c.fillRect(300, 0, 6, RH);
+  }, () => {
+    logo(triangle, 91, 16, 70); logo(white, 50, 106, 26);
+    c.fillStyle = fg; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = '800 56px "Outfit", "Arial Black", sans-serif'; c.fillText(title, 665, RH * 0.4);
+    c.font = '600 26px "Outfit", Arial, sans-serif'; c.fillText(sub, 665, RH * 0.8);
+  });
+  sponsored(1, '#c4161c', '#f4efe2', '#b3141a', 'SHARMA PAAN BHANDAR', 'PAAN · COLD DRINKS · MOBILE RECHARGE');
+  sponsored(2, '#0b3d91', '#f2c230', '#1d1a18', 'NEW RAJ PAAN CORNER', 'PAAN · SNACKS · COLD DRINKS');
   // 3-5: neighbourhood shops, so the TOTAL boards sit in a real bazaar
   const shopSign = (row, bg, fg, title, sub) => board(row, () => { c.fillStyle = bg; c.fillRect(0, 0, W, RH); },
     () => { c.fillStyle = fg; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = '800 70px "Outfit", "Arial Black", sans-serif'; c.fillText(title, W / 2, RH * 0.42); c.font = '600 30px "Outfit", Arial, sans-serif'; c.fillText(sub, W / 2, RH * 0.8); });
@@ -329,40 +339,79 @@ export function makeSkyline() {
   const t = tex(c0, { repeat: true }); t.wrapT = THREE.ClampToEdgeWrapping; return t;
 }
 
-/* ---------------- people of the street: eight silhouettes, back-lit ---------------- */
-// Dark figures with a warm rim of light down one side, the way people look standing against a lit shop or a
-// doorway at night: 0 man in a kurta, 1 woman in a saree, 2 man waving, 3 woman with a puja thali,
-// 4 elderly man with a stick, 5 girl in a lehenga, 6 boy holding out a sparkler, 7 a couple.
+/* ---------------- people of the street: eight figures, each idle and cheering ---------------- */
+// Back-lit figures, the way people look against a lit shop or a doorway at night: dark, but their clothes keep
+// their colour (a maroon saree with a gold border, a lehenga, kurtas), with a warm rim of light down one side.
+// Cells 0-7 stand, cells 8-15 are the same people cheering (arms up, the thali raised, children jumping):
+// 0 man in a kurta, 1 woman in a saree, 2 man waving, 3 woman with a puja thali, 4 elderly man with a stick,
+// 5 girl in a lehenga, 6 boy holding out a sparkler, 7 a couple.
 export function makePeopleAtlas() {
-  const CW = 128, CH = 256, c0 = mk(CW * 8, CH), c = c0.getContext('2d');
-  const body = '#0b0912', rim = 'rgba(255,170,90,0.95)';
-  const fig = (i, draw) => {
-    // the rim: the figure in warm light, then the dark figure over it nudged across, leaving a sliver of light
-    for (const [col, dx] of [[rim, -2.5], [body, 0]]) {
-      c.save(); c.translate(i * CW + CW / 2 + dx, 0); c.fillStyle = col; c.strokeStyle = col; c.lineCap = 'round'; c.lineJoin = 'round'; draw(c); c.restore();
-    }
+  const CW = 128, CH = 256, c0 = mk(CW * 16, CH), c = c0.getContext('2d');
+  const RIM = 'rgba(255,176,96,0.95)', SKIN = '#1c1318', HAIR = '#0d0a0e';
+  let rim = false;                                   // the first pass paints every shape in the rim colour
+  const col = k => (rim ? RIM : k);
+  const shape = (k, fn) => { c.fillStyle = col(k); c.beginPath(); fn(); c.closePath(); c.fill(); };
+  const disc = (k, x, y, r) => shape(k, () => c.arc(x, y, r, 0, TAU));
+  const limb = (k, w, ...pts) => {
+    c.strokeStyle = col(k); c.lineWidth = w; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath(); c.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); c.stroke();
   };
-  const head = (x, y, r) => { c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); };
-  const poly = pts => { c.beginPath(); c.moveTo(pts[0], pts[1]); for (let k = 2; k < pts.length; k += 2) c.lineTo(pts[k], pts[k + 1]); c.closePath(); c.fill(); };
-  const limb = (x0, y0, x1, y1, w) => { c.lineWidth = w; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); };
-  // 0 man in a kurta
-  fig(0, () => { head(0, 34, 15); poly([-20, 56, 20, 56, 26, 150, -26, 150]); limb(-21, 62, -27, 140, 11); limb(21, 62, 27, 140, 11); poly([-17, 150, -3, 150, -5, 252, -16, 252]); poly([3, 150, 17, 150, 16, 252, 5, 252]); });
-  // 1 woman in a saree, the pallu over a shoulder and a bun
-  fig(1, () => { head(0, 36, 14); head(9, 30, 8); poly([-18, 56, 18, 56, 22, 120, 34, 252, -34, 252, -22, 120]); poly([18, 56, 26, 60, 30, 170, 20, 175]); limb(-19, 62, -24, 128, 10); });
-  // 2 man waving
-  fig(2, () => { head(0, 34, 15); poly([-20, 56, 20, 56, 24, 150, -24, 150]); limb(-21, 62, -27, 140, 11); limb(21, 62, 38, 22, 10); head(40, 16, 7); poly([-17, 150, -3, 150, -5, 252, -16, 252]); poly([3, 150, 17, 150, 16, 252, 5, 252]); });
-  // 3 woman with a puja thali, its little flames bright
-  fig(3, () => { head(0, 36, 14); poly([-18, 56, 18, 56, 22, 120, 32, 252, -32, 252, -22, 120]); limb(-18, 64, 10, 98, 10); limb(18, 64, 14, 98, 10); c.beginPath(); c.ellipse(8, 100, 26, 6, 0, 0, TAU); c.fill(); });
-  c.fillStyle = '#ffd27a'; for (const x of [-10, 2, 14, 26]) { c.beginPath(); c.arc(3 * CW + CW / 2 + x, 93, 2.6, 0, TAU); c.fill(); }
-  // 4 elderly man with a stick, a little stooped
-  fig(4, () => { head(6, 42, 14); poly([-16, 60, 22, 62, 22, 156, -22, 154]); limb(22, 70, 36, 132, 10); limb(38, 120, 44, 252, 5); poly([-15, 154, -2, 154, -4, 252, -15, 252]); poly([4, 154, 18, 154, 17, 252, 6, 252]); });
-  // 5 girl in a lehenga (child height drawn into the lower part of the cell)
-  fig(5, () => { head(0, 112, 12); head(-11, 112, 5); head(11, 112, 5); poly([-13, 128, 13, 128, 15, 176, -15, 176]); poly([-15, 172, 15, 172, 30, 252, -30, 252]); limb(-14, 134, -20, 180, 8); limb(14, 134, 20, 180, 8); });
-  // 6 boy holding a sparkler out at arm's length (the sparks come from the game)
-  fig(6, () => { head(0, 112, 12); poly([-14, 128, 14, 128, 16, 196, -16, 196]); limb(13, 134, 36, 150, 8); limb(-14, 134, -20, 186, 8); poly([-13, 196, -2, 196, -3, 252, -13, 252]); poly([2, 196, 13, 196, 12, 252, 3, 252]); limb(36, 150, 54, 128, 2.5); });
-  // 7 a couple side by side
-  fig(7, () => { head(-22, 38, 13); poly([-38, 58, -6, 58, -4, 148, -40, 148]); poly([-36, 148, -25, 148, -26, 252, -36, 252]); poly([-20, 148, -9, 148, -10, 252, -19, 252]);
-    head(22, 44, 12); head(30, 38, 7); poly([8, 62, 36, 62, 40, 120, 50, 252, -2, 252, 6, 120]); });
+  const trim = (k, w, ...pts) => { if (!rim) limb(k, w, ...pts); };          // details that catch no rim
+  const headAt = (x, y, r, bun) => {
+    disc(SKIN, x, y, r);
+    shape(HAIR, () => c.arc(x, y - 1, r + 1, Math.PI * 1.02, Math.PI * 1.98));
+    if (bun) disc(HAIR, x + r * 0.75, y - r * 0.55, r * 0.55);
+  };
+  // bodies from the shoulders down; arms come with the pose
+  const kurta = (cl, x = 0) => {
+    shape(cl, () => { c.moveTo(x - 19, 54); c.quadraticCurveTo(x, 47, x + 19, 54); c.lineTo(x + 22, 108); c.quadraticCurveTo(x + 27, 140, x + 25, 158); c.lineTo(x - 25, 158); c.quadraticCurveTo(x - 27, 140, x - 22, 108); });
+    shape('#17141d', () => { c.moveTo(x - 16, 156); c.lineTo(x - 2, 156); c.lineTo(x - 4, 251); c.lineTo(x - 15, 251); });
+    shape('#17141d', () => { c.moveTo(x + 2, 156); c.lineTo(x + 16, 156); c.lineTo(x + 15, 251); c.lineTo(x + 4, 251); });
+    trim('rgba(255,210,140,0.35)', 2, x, 60, x, 100);
+  };
+  const saree = (cl, x = 0, border = '#a8772a') => {
+    shape(cl, () => { c.moveTo(x - 17, 56); c.quadraticCurveTo(x, 49, x + 17, 56); c.lineTo(x + 19, 112); c.quadraticCurveTo(x + 30, 190, x + 33, 251); c.lineTo(x - 33, 251); c.quadraticCurveTo(x - 30, 190, x - 19, 112); });
+    shape(cl, () => { c.moveTo(x + 14, 56); c.quadraticCurveTo(x + 30, 70, x + 31, 172); c.lineTo(x + 20, 176); c.quadraticCurveTo(x + 16, 110, x + 8, 64); });   // the pallu
+    trim(border, 3, x - 32, 247, x + 32, 247); trim(border, 2.5, x + 30, 80, x + 30, 170); trim(border, 2, x - 6, 120, x + 4, 250);
+  };
+  const lehenga = (x = 0) => {
+    shape('#2a1c3c', () => { c.moveTo(x - 13, 128); c.quadraticCurveTo(x, 122, x + 13, 128); c.lineTo(x + 15, 172); c.lineTo(x - 15, 172); });
+    shape('#4a1338', () => { c.moveTo(x - 15, 168); c.lineTo(x + 15, 168); c.quadraticCurveTo(x + 26, 210, x + 30, 251); c.lineTo(x - 30, 251); c.quadraticCurveTo(x - 26, 210, x - 15, 168); });
+    if (!rim) { c.fillStyle = '#b8862e'; for (let i = -24; i <= 24; i += 8) { c.beginPath(); c.arc(x + i, 244, 1.6, 0, TAU); c.fill(); } }
+  };
+  const boy = (x = 0) => {
+    shape('#22324e', () => { c.moveTo(x - 14, 128); c.quadraticCurveTo(x, 122, x + 14, 128); c.lineTo(x + 16, 196); c.lineTo(x - 16, 196); });
+    shape('#151821', () => { c.moveTo(x - 13, 194); c.lineTo(x - 2, 194); c.lineTo(x - 3, 251); c.lineTo(x - 13, 251); });
+    shape('#151821', () => { c.moveTo(x + 2, 194); c.lineTo(x + 13, 194); c.lineTo(x + 12, 251); c.lineTo(x + 3, 251); });
+  };
+  const thali = (x, y) => shape('#5c4a2a', () => c.ellipse(x, y, 24, 5.5, 0, 0, TAU));
+  const figures = [
+    [() => { headAt(0, 32, 13); kurta('#3a3346'); limb('#3a3346', 10, -20, 60, -25, 102, -24, 138); limb('#3a3346', 10, 20, 60, 25, 102, 24, 138); },
+     () => { headAt(0, 32, 13); kurta('#3a3346'); limb('#3a3346', 10, -20, 60, -34, 30, -40, 4); limb('#3a3346', 10, 20, 60, 34, 30, 40, 4); }],
+    [() => { headAt(0, 34, 12.5, true); saree('#5a1426'); limb('#5a1426', 9, -18, 62, -22, 104, -20, 132); },
+     () => { headAt(0, 34, 12.5, true); saree('#5a1426'); limb('#5a1426', 9, -18, 62, -30, 34, -32, 8); }],
+    [() => { headAt(0, 32, 13); kurta('#2f3d3a'); limb('#2f3d3a', 10, -20, 60, -25, 102, -24, 138); limb('#2f3d3a', 10, 20, 60, 34, 34, 40, 12); },
+     () => { headAt(0, 32, 13); kurta('#2f3d3a'); limb('#2f3d3a', 10, -20, 60, -36, 32, -38, 6); limb('#2f3d3a', 10, 20, 60, 36, 32, 38, 6); }],
+    [() => { headAt(0, 34, 12.5, true); saree('#3c1650', 0, '#b8862e'); limb('#3c1650', 9, -17, 64, -8, 96, 8, 98); limb('#3c1650', 9, 17, 64, 22, 92, 18, 98); thali(8, 100); },
+     () => { headAt(0, 34, 12.5, true); saree('#3c1650', 0, '#b8862e'); limb('#3c1650', 9, -17, 64, -16, 38, -2, 20); limb('#3c1650', 9, 17, 64, 20, 38, 8, 20); thali(3, 16); }],
+    [() => { headAt(4, 40, 12.5); kurta('#4a4236', 3); limb('#4a4236', 9, 22, 66, 32, 104, 36, 128); limb('#6a5232', 4, 38, 124, 44, 251); limb('#4a4236', 9, -16, 66, -20, 106, -18, 138); },
+     () => { headAt(4, 40, 12.5); kurta('#4a4236', 3); limb('#4a4236', 9, 22, 66, 32, 104, 36, 128); limb('#6a5232', 4, 38, 124, 44, 251); limb('#4a4236', 9, -16, 66, -30, 40, -34, 18); }],
+    [() => { headAt(0, 112, 11); disc(HAIR, -10, 116, 4.5); disc(HAIR, 10, 116, 4.5); lehenga(); limb('#2a1c3c', 7, -13, 132, -18, 162, -17, 180); limb('#2a1c3c', 7, 13, 132, 18, 162, 17, 180); },
+     () => { headAt(0, 112, 11); disc(HAIR, -10, 116, 4.5); disc(HAIR, 10, 116, 4.5); lehenga(); limb('#2a1c3c', 7, -13, 132, -24, 108, -26, 88); limb('#2a1c3c', 7, 13, 132, 24, 108, 26, 88); }],
+    [() => { headAt(0, 112, 11); boy(); limb('#22324e', 7, 13, 132, 26, 144, 36, 150); limb('#22324e', 7, -13, 132, -18, 162, -18, 184); trim('#7a6a50', 2.5, 36, 150, 54, 128); },
+     () => { headAt(0, 112, 11); boy(); limb('#22324e', 7, 13, 132, 26, 144, 36, 150); limb('#22324e', 7, -13, 132, -26, 106, -28, 86); trim('#7a6a50', 2.5, 36, 150, 54, 128); }],
+    [() => { headAt(-22, 36, 12); kurta('#363044', -22); limb('#363044', 9, -40, 62, -44, 104, -42, 136); headAt(22, 42, 11.5, true); saree('#6a1830', 22); },
+     () => { headAt(-22, 36, 12); kurta('#363044', -22); limb('#363044', 9, -40, 62, -52, 34, -54, 10); headAt(22, 42, 11.5, true); saree('#6a1830', 22); limb('#6a1830', 8, 38, 68, 50, 40, 52, 16); }],
+  ];
+  figures.forEach((poses, i) => poses.forEach((draw, cheer) => {
+    const x0 = (i + cheer * 8) * CW + CW / 2;
+    for (const [pass, dx] of [[true, -2.5], [false, 0]]) { rim = pass; c.save(); c.translate(x0 + dx, 0); draw(); c.restore(); }
+    // the thali's little flames stay lit
+    if (i === 3) {
+      c.fillStyle = '#ffd27a';
+      for (const xx of [-10, 2, 14, 26]) { c.beginPath(); c.arc(x0 + (cheer ? xx - 5 : xx), cheer ? 10 : 93, 2.6, 0, TAU); c.fill(); }
+    }
+  }));
   const t = tex(c0, {}); t.generateMipmaps = true; return t;
 }
 
