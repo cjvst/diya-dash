@@ -106,15 +106,17 @@ export function makeFacadeAtlas(aniso) {
   for (let i = 0; i < FACADE.COLS * FACADE.ROWS; i++) {
     const cxp = (i % FACADE.COLS) * CW, cyp = Math.floor(i / FACADE.COLS) * CH;
     const shop = i % 3 !== 0;            // two of every three fronts have a shop on the ground floor
-    drawFacade(c, e, cxp, cyp, CW, CH, mulberry32(100 + i * 17), PAINTS[i % PAINTS.length], shop, grime, fine);
-    cells.push({ u0: cxp / A, u1: (cxp + CW) / A, v0: 1 - (cyp + CH) / A, v1: 1 - cyp / A, shop });
+    const wins = [];                     // each painted window, in metres from the cell's left edge and the street
+    drawFacade(c, e, cxp, cyp, CW, CH, mulberry32(100 + i * 17), PAINTS[i % PAINTS.length], shop, grime, fine, wins);
+    cells.push({ u0: cxp / A, u1: (cxp + CW) / A, v0: 1 - (cyp + CH) / A, v1: 1 - cyp / A, shop, wins });
   }
   // a plain plaster swatch for side walls, bottom-right corner
   return { map: tex(col, { aniso }), emissiveMap: tex(ex, { srgb: false, aniso }), cells };
 }
 
-function drawFacade(c, e, X, Y, W, H, r, paint, shop, grime, fine) {
+function drawFacade(c, e, X, Y, W, H, r, paint, shop, grime, fine, wins) {
   const pxm = W / FACADE.W, fy = m => Y + H - m * pxm;     // metres up from street -> canvas y
+  const toM = (x, y, w, h, door) => ({ x: (x - X) / pxm, y: (Y + H - (y + h)) / pxm, w: w / pxm, h: h / pxm, door });
   c.save(); c.beginPath(); c.rect(X, Y, W, H); c.clip();
   // plaster
   const g = c.createLinearGradient(0, Y, 0, Y + H); g.addColorStop(0, shade(paint, 1.05)); g.addColorStop(1, shade(paint, 0.82));
@@ -134,7 +136,7 @@ function drawFacade(c, e, X, Y, W, H, r, paint, shop, grime, fine) {
     for (let k = 0; k < n; k++) {
       const cxk = X + W * (k + 0.5) / n, isDoor = k === door;
       const h = isDoor ? 2.2 * pxm : wh, y = isDoor ? fy(base + 0.05) - h : fy(base + 0.9) - h;
-      drawWindow(c, e, cxk - ww / 2, y, ww, h, r, lit, isDoor);
+      drawWindow(c, e, cxk - ww / 2, y, ww, h, r, lit, isDoor); wins.push(toM(cxk - ww / 2, y, ww, h, isDoor));
     }
   }
   // ground floor
@@ -142,14 +144,53 @@ function drawFacade(c, e, X, Y, W, H, r, paint, shop, grime, fine) {
   if (shop) {
     const sw = W * 0.72, sx = X + (W - sw) / 2, sh = 2.6 * pxm, sy = gy - sh;
     c.fillStyle = '#17110f'; c.fillRect(sx, sy, sw, sh);
-    // warm shop interior with shelves, lit early in the run
-    const thr = 0.04 + r() * 0.25;
-    c.fillStyle = '#3a2618'; c.fillRect(sx + 6, sy + 6, sw - 12, sh - 12);
-    for (let s = 0; s < 4; s++) {
-      const yy = sy + 20 + s * (sh - 40) / 4;
-      c.fillStyle = '#20150e'; c.fillRect(sx + 8, yy, sw - 16, 5);
-      for (let b = 0; b < 14; b++) { c.fillStyle = pick(r, ['#c9472f', '#e0b43c', '#3c7fd0', '#e8e0d0', '#5aa34a', '#d0602a']); c.fillRect(sx + 12 + b * (sw - 24) / 14, yy - 14 - r() * 8, (sw - 24) / 16, 12 + r() * 6); }
+    // A warm shop interior, lit early in the run: a back wall bright under its tube light, wooden shelves
+    // stacked with goods (bottles with a glint and a cap, boxes with labels, jars with red lids), each shaded
+    // so it has a side and a top, and a glass counter in front with more goods glinting inside.
+    const thr = 0.04 + r() * 0.25, ix = sx + 6, iy = sy + 6, iw = sw - 12, ih = sh - 12;
+    const back = c.createLinearGradient(0, iy, 0, iy + ih); back.addColorStop(0, '#7a5634'); back.addColorStop(0.45, '#4e3420'); back.addColorStop(1, '#24170e');
+    c.fillStyle = back; c.fillRect(ix, iy, iw, ih);
+    const GOODS = ['#c9472f', '#e0b43c', '#3c7fd0', '#ece4d4', '#5aa34a', '#d0602a', '#8e3b8e', '#f2d23a', '#1f6f8a'];
+    const shelves = 5, counterY = iy + ih * 0.74;
+    for (let s = 0; s < shelves; s++) {
+      const yy = iy + 16 + (s * (counterY - iy - 24)) / (shelves - 1);
+      for (let gx = ix + 5; gx < ix + iw - 12;) {
+        const kind = r(), gc = pick(r, GOODS);
+        if (kind < 0.34) {                                         // a bottle
+          const bw = 5 + r() * 3, bh = 13 + r() * 8;
+          c.fillStyle = gc; c.fillRect(gx, yy - bh, bw, bh); c.fillRect(gx + bw * 0.3, yy - bh - 4, bw * 0.4, 4);
+          c.fillStyle = 'rgba(255,255,255,.4)'; c.fillRect(gx + 1, yy - bh + 3, 1.4, bh - 6);
+          c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(gx + bw - 1.5, yy - bh, 1.5, bh);
+          c.fillStyle = '#d8d0c0'; c.fillRect(gx + bw * 0.25, yy - bh - 6, bw * 0.5, 2);
+          gx += bw + 2 + r() * 2;
+        } else if (kind < 0.72) {                                  // a box with its label
+          const bw = 10 + r() * 11, bh = 8 + r() * 10;
+          c.fillStyle = gc; c.fillRect(gx, yy - bh, bw, bh);
+          c.fillStyle = 'rgba(255,255,255,.6)'; c.fillRect(gx + 2, yy - bh * 0.62, bw - 4, Math.max(2, bh * 0.24));
+          c.fillStyle = 'rgba(255,255,255,.25)'; c.fillRect(gx, yy - bh, bw, 1.5);
+          c.fillStyle = 'rgba(0,0,0,.28)'; c.fillRect(gx + bw - 2, yy - bh, 2, bh);
+          gx += bw + 1 + r() * 2;
+        } else {                                                   // a jar with a red lid
+          const bw = 9 + r() * 5, bh = 11 + r() * 5;
+          c.fillStyle = 'rgba(210,228,232,.55)'; c.fillRect(gx, yy - bh, bw, bh);
+          c.fillStyle = gc; c.fillRect(gx + 1, yy - bh * 0.72, bw - 2, bh * 0.72);
+          c.fillStyle = 'rgba(255,255,255,.45)'; c.fillRect(gx + 1.5, yy - bh + 2, 1.5, bh - 4);
+          c.fillStyle = '#b3241c'; c.fillRect(gx - 1, yy - bh - 3, bw + 2, 3);
+          gx += bw + 2 + r() * 2;
+        }
+      }
+      // the shelf board, its front edge catching the light, a shadow under it
+      c.fillStyle = '#3a2414'; c.fillRect(ix + 2, yy, iw - 4, 5);
+      c.fillStyle = 'rgba(255,220,160,.4)'; c.fillRect(ix + 2, yy, iw - 4, 1.5);
+      c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(ix + 2, yy + 5, iw - 4, 4);
     }
+    // the glass counter
+    const ch2 = iy + ih - counterY;
+    c.fillStyle = '#2a1c12'; c.fillRect(ix, counterY, iw, ch2);
+    for (let k = 0; k < 22; k++) { c.fillStyle = pick(r, GOODS); c.fillRect(ix + 8 + r() * (iw - 22), counterY + 7 + r() * ch2 * 0.35, 6 + r() * 7, 4 + r() * 4); }
+    c.fillStyle = 'rgba(190,225,235,.16)'; c.fillRect(ix + 4, counterY + 4, iw - 8, ch2 * 0.55);
+    c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(ix + 4, counterY + 2, iw - 8, 1.5);
+    c.fillStyle = '#3e2a1a'; c.fillRect(ix, counterY + ch2 * 0.62, iw, ch2 * 0.38);
     lit(sx + 6, sy + 6, sw - 12, sh - 12, thr, 0.75 + r() * 0.25, r() < 0.4 ? 0.8 : 0.1);
     // rolling shutter pulled half down
     const shut = (0.25 + r() * 0.3) * sh;
@@ -170,7 +211,7 @@ function drawFacade(c, e, X, Y, W, H, r, paint, shop, grime, fine) {
     // light spilling through the gap between the doors
     c.fillStyle = '#2a1a10'; c.fillRect(dx + dw / 2 - 3, dy + 4, 6, dh - 8);
     lit(dx + dw / 2 - 3, dy + 4, 6, dh - 8, 0.03 + r() * 0.3, 1, 0);
-    for (const s of [-1, 1]) drawWindow(c, e, X + W / 2 + s * W * 0.33 - 0.55 * pxm, gy - 2.3 * pxm, 1.1 * pxm, 1.2 * pxm, r, lit, false, true);
+    for (const s of [-1, 1]) { const wx = X + W / 2 + s * W * 0.33 - 0.55 * pxm; drawWindow(c, e, wx, gy - 2.3 * pxm, 1.1 * pxm, 1.2 * pxm, r, lit, false, true); wins.push(toM(wx, gy - 2.3 * pxm, 1.1 * pxm, 1.2 * pxm, false)); }
   }
   // electric meter box and a stray wire, the texture of every Indian lane
   c.fillStyle = '#8a8d86'; const mbx = X + (r() < 0.5 ? 14 : W - 40); c.fillRect(mbx, top + 30, 26, 34); c.fillStyle = '#2d2f2c'; c.fillRect(mbx + 5, top + 36, 16, 10);
@@ -223,7 +264,9 @@ function drawWindow(c, e, x, y, w, h, r, lit, isDoor, ground = false) {
 }
 
 /* ---------------- boards: TOTAL shop boards built from the official wordmark and triangle ---------------- */
-export const BOARD_ROWS = 6;
+export const BOARD_ROWS = 8;
+// rows 6 and 7 are halves: projecting signs (PAAN, CHAI, MEDICAL) and a tube light's glow. [u0, u1, row]
+export const SIGN_CELLS = [[0, 0.5, 6], [0.5, 1, 6], [0, 0.5, 7]], TUBE_CELL = [0.55, 0.95, 7];
 export function makeBoardAtlas(wordmark, triangle, aniso) {
   const W = 1024, RH = 160, c0 = mk(W, RH * BOARD_ROWS), c = c0.getContext('2d');
   const white = recolor(wordmark, '#ffffff');
@@ -251,20 +294,77 @@ export function makeBoardAtlas(wordmark, triangle, aniso) {
   shopSign(3, '#f2c230', '#b3141a', 'SRI BALAJI SWEETS', 'PURE GHEE MITHAI · NAMKEEN');
   shopSign(4, '#1f4f9c', '#ffffff', 'KRISHNA GENERAL STORE', 'DAILY NEEDS · DIWALI DECOR');
   shopSign(5, '#1d7a4a', '#ffffff', 'LAKSHMI DIYA & DECOR', 'DIYAS · RANGOLI · LIGHTS');
+  // projecting signs, a half row each, double-faced on brackets out over the street
+  const half = (row, x0, bg, fn) => { c.save(); c.translate(x0, row * RH); c.beginPath(); c.rect(0, 0, W / 2, RH); c.clip(); bg(); fn(); c.restore(); };
+  const word = (t, col, size, y) => { c.fillStyle = col; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `800 ${size}px "Outfit", "Arial Black", sans-serif`; c.fillText(t, W / 4, y); };
+  half(6, 0, () => { c.fillStyle = '#1d6e3e'; c.fillRect(0, 0, W / 2, RH); c.strokeStyle = '#ffd36a'; c.lineWidth = 6; c.strokeRect(8, 8, W / 2 - 16, RH - 16); }, () => {
+    c.fillStyle = '#7fd36a'; c.beginPath(); c.ellipse(70, RH / 2, 34, 22, -0.5, 0, TAU); c.fill();   // a betel leaf
+    word('PAAN', '#ffffff', 88, RH * 0.54); });
+  half(6, W / 2, () => { c.fillStyle = '#8e1f2a'; c.fillRect(0, 0, W / 2, RH); c.strokeStyle = '#ffd36a'; c.lineWidth = 6; c.strokeRect(8, 8, W / 2 - 16, RH - 16); }, () => {
+    c.fillStyle = '#ffd36a'; c.fillRect(54, 58, 44, 50); c.fillRect(96, 70, 12, 26);                // a cutting-chai glass
+    word('CHAI', '#ffd36a', 88, RH * 0.54); });
+  half(7, 0, () => { c.fillStyle = '#f4f6f2'; c.fillRect(0, 0, W / 2, RH); c.strokeStyle = '#1d8a4a'; c.lineWidth = 6; c.strokeRect(8, 8, W / 2 - 16, RH - 16); }, () => {
+    c.fillStyle = '#1d9a4a'; c.fillRect(56, 50, 60, 20); c.fillRect(76, 30, 20, 60);                  // the green cross
+    word('MEDICAL', '#1d8a4a', 66, RH * 0.54); });
+  // a tube light's glow: white-hot in the middle, falling away top and bottom
+  { const y0 = 7 * RH, g = c.createLinearGradient(0, y0, 0, y0 + RH); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.4, '#cfe4ff'); g.addColorStop(0.5, '#ffffff'); g.addColorStop(0.6, '#cfe4ff'); g.addColorStop(1, 'rgba(0,0,0,1)');
+    c.fillStyle = g; c.fillRect(W / 2, y0, W / 2, RH); }
   // a little grime so they live in the street
   c.globalCompositeOperation = 'multiply'; c.globalAlpha = 0.25; c.drawImage(noiseCanvas(256, 12, 77, 1.3), 0, 0, W, RH * BOARD_ROWS);
   c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
   return tex(c0, { aniso });
 }
-// The golden diyas' token: the official TOTAL triangle, in its own colours, on a gold coin
-export function makeCoin(tri) {
-  const S = 256, c0 = mk(S, S), c = c0.getContext('2d'), h = S / 2;
-  const rim = c.createLinearGradient(0, 0, S, S); rim.addColorStop(0, '#fff3c0'); rim.addColorStop(0.45, '#e7a92c'); rim.addColorStop(1, '#8a5a10');
-  c.beginPath(); c.arc(h, h, h * 0.98, 0, TAU); c.fillStyle = rim; c.fill();
-  const face = c.createRadialGradient(h * 0.75, h * 0.65, h * 0.05, h, h, h * 0.84); face.addColorStop(0, '#fff6d0'); face.addColorStop(0.5, '#ffcf5a'); face.addColorStop(1, '#c98a1e');
-  c.beginPath(); c.arc(h, h, h * 0.84, 0, TAU); c.fillStyle = face; c.fill();
-  c.lineWidth = 3; c.strokeStyle = 'rgba(120,70,0,.55)'; c.beginPath(); c.arc(h, h, h * 0.76, 0, TAU); c.stroke();
-  const w = S * 0.6, th = (w * tri.height) / tri.width; c.drawImage(tri, h - w / 2, h - th / 2 + 6, w, th);
+// The golden diyas' token, minted: a gold coin with a raised, polished rim and a ring of beads, a field brushed
+// in fine rays, and the official TOTAL triangle set into it in its own colours as glossy enamel, held by a
+// raised gold bezel. Four maps for a metallic PBR material: colour, roughness, metalness and relief. The
+// triangle is centred on its centroid and as large as the bead ring allows (its corners just inside it).
+export function makeCoinFace(tri) {
+  const S = 512, h = S / 2, R = h * 0.985;
+  const canv = () => { const c0 = mk(S, S); return [c0, c0.getContext('2d')]; };
+  const [map, c] = canv(), [rough, cr] = canv(), [metal, cm] = canv(), [bump, cb] = canv();
+  const disc = (ctx, r, fill) => { ctx.beginPath(); ctx.arc(h, h, r, 0, TAU); ctx.fillStyle = fill; ctx.fill(); };
+  const ring = (ctx, r0, r1, fill) => { ctx.beginPath(); ctx.arc(h, h, r1, 0, TAU); ctx.arc(h, h, r0, 0, TAU, true); ctx.fillStyle = fill; ctx.fill('evenodd'); };
+  // colour: a satin field, warmer towards the edge, brushed with fine rays from the centre
+  const field = c.createRadialGradient(h * 0.82, h * 0.72, R * 0.05, h, h, R); field.addColorStop(0, '#fff0c4'); field.addColorStop(0.6, '#f2d08a'); field.addColorStop(1, '#d4a75a');
+  disc(c, R, field);
+  c.save(); c.translate(h, h); const rr = mulberry32(31);
+  for (let k = 0; k < 360; k++) { const a = (k / 360) * TAU + rr() * 0.01; c.strokeStyle = rr() < 0.5 ? 'rgba(255,248,225,.05)' : 'rgba(110,70,10,.05)'; c.lineWidth = 1; c.beginPath(); c.moveTo(Math.cos(a) * R * 0.08, Math.sin(a) * R * 0.08); c.lineTo(Math.cos(a) * R * 0.86, Math.sin(a) * R * 0.86); c.stroke(); }
+  c.restore();
+  // the rim: polished, with a bevel catching the light top-left
+  const rim = c.createLinearGradient(0, 0, S, S); rim.addColorStop(0, '#fff6d8'); rim.addColorStop(0.4, '#f0cc80'); rim.addColorStop(0.75, '#c9984a'); rim.addColorStop(1, '#9a6e2a');
+  ring(c, R * 0.925, R, rim);
+  // a ring of beads just inside it
+  const beads = 72, rb = R * 0.885;
+  for (let k = 0; k < beads; k++) { const a = (k / beads) * TAU, x = h + Math.cos(a) * rb, y = h + Math.sin(a) * rb;
+    const g = c.createRadialGradient(x - 2, y - 2, 0.5, x, y, 5.5); g.addColorStop(0, '#fff8e0'); g.addColorStop(1, '#c9984a'); c.beginPath(); c.arc(x, y, 5, 0, TAU); c.fillStyle = g; c.fill(); }
+  // the triangle: corners just inside the beads, its centroid on the centre (a third of its height below the top edge)
+  const tw = 1.52 * R, th = (tw * tri.height) / tri.width, tx = h - tw / 2, ty = h - th / 3, bz = 1.09;
+  const bw = tw * bz, bh = th * bz, bx = h - bw / 2, by = h - bh / 3;
+  const gold = recolor(tri, '#ffffff'), goldC = gold.getContext('2d');
+  goldC.globalCompositeOperation = 'source-in';
+  const bg = goldC.createLinearGradient(0, 0, gold.width, gold.height); bg.addColorStop(0, '#fff8e0'); bg.addColorStop(0.5, '#f0cc80'); bg.addColorStop(1, '#b8883a');
+  goldC.fillStyle = bg; goldC.fillRect(0, 0, gold.width, gold.height);
+  c.drawImage(gold, bx, by, bw, bh);                    // the bezel
+  c.drawImage(tri, tx, ty, tw, th);                     // the enamel
+  // a glint across the enamel, as on a glazed surface
+  c.save(); c.globalCompositeOperation = 'source-atop';
+  const gl = c.createLinearGradient(tx, ty, tx + tw, ty + th); gl.addColorStop(0.2, 'rgba(255,255,255,0)'); gl.addColorStop(0.35, 'rgba(255,255,255,.22)'); gl.addColorStop(0.45, 'rgba(255,255,255,0)');
+  c.fillStyle = gl; c.fillRect(tx, ty, tw, th * 0.6); c.restore();
+  // roughness: satin field 0.42, polished rim, beads and bezel 0.16, glossy enamel 0.06
+  disc(cr, R, '#5c5c5c'); ring(cr, R * 0.86, R, '#262626');
+  cr.drawImage(recolor(tri, '#292929'), bx, by, bw, bh); cr.drawImage(recolor(tri, '#0f0f0f'), tx, ty, tw, th);
+  // metalness: gold everywhere but the enamel
+  disc(cm, R, '#ffffff'); cm.drawImage(recolor(tri, '#000000'), tx, ty, tw, th);
+  // relief: field at mid height, rim and beads raised, the bezel raised, the enamel set a little below it
+  disc(cb, R, '#7a7a7a'); ring(cb, R * 0.925, R, '#d8d8d8');
+  for (let k = 0; k < beads; k++) { const a = (k / beads) * TAU; cb.beginPath(); cb.arc(h + Math.cos(a) * rb, h + Math.sin(a) * rb, 5, 0, TAU); cb.fillStyle = '#e0e0e0'; cb.fill(); }
+  cb.drawImage(recolor(tri, '#d0d0d0'), bx, by, bw, bh); cb.drawImage(recolor(tri, '#8c8c8c'), tx, ty, tw, th);
+  return { map, rough, metal, bump };
+}
+// the coin's reeded edge, as a relief strip wrapped round it
+export function makeCoinEdge() {
+  const c0 = mk(256, 16), c = c0.getContext('2d');
+  for (let x = 0; x < 256; x += 4) { c.fillStyle = '#e0e0e0'; c.fillRect(x, 0, 2, 16); c.fillStyle = '#505050'; c.fillRect(x + 2, 0, 2, 16); }
   return c0;
 }
 export function recolor(img, color) {
@@ -491,6 +591,20 @@ export function makeDiyaTextures() {
 }
 
 /* ---------------- environment for glossy reflections on the TOTAL gem ---------------- */
+// What the coin reflects: a jeweller's light box. Mostly dark, with bright soft strips overhead and to the
+// sides and a warm glow low down, so polished gold shows real metal, deep reflections and hot highlights,
+// instead of an even orange.
+export function makeStudioEnv() {
+  const W = 512, H = 256, c0 = mk(W, H), c = c0.getContext('2d');
+  const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#16120e'); g.addColorStop(0.45, '#050404'); g.addColorStop(0.75, '#2a160a'); g.addColorStop(1, '#0a0604');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  const strip = (x, y, w, h, col) => { const s = c.createLinearGradient(x, y, x, y + h); s.addColorStop(0, 'rgba(0,0,0,0)'); s.addColorStop(0.5, col); s.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = s; c.fillRect(x, y, w, h); };
+  strip(0, 20, W, 34, '#fff6e6');                 // a long light overhead, all round
+  strip(60, 70, 70, 90, '#ffe2b0'); strip(300, 60, 60, 110, '#fff0d8'); strip(440, 80, 40, 70, '#d8e4ff');
+  strip(0, 190, W, 30, '#ff9a40');               // the warm glow of the diyas below
+  const t = new THREE.CanvasTexture(c0); t.colorSpace = THREE.SRGBColorSpace; t.mapping = THREE.EquirectangularReflectionMapping;
+  return t;
+}
 export function makeEnvCanvas() {
   const W = 512, H = 256, c0 = mk(W, H), c = c0.getContext('2d');
   const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0a0c26'); g.addColorStop(0.5, '#3a1a3a'); g.addColorStop(0.55, '#c86a2a'); g.addColorStop(1, '#1a0c08');

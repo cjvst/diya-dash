@@ -234,7 +234,7 @@ async function boot() {
   decorDiyas = new DiyaSet(230, tex.diya, brass, { seg: 14 });
   scene.add(gameDiyas.group, decorDiyas.group, flames.mesh, pools.mesh, washes.mesh, rings.mesh);
   rings.mat.uniforms.uFogCol.value.copy(FOG);
-  makeCrackers(); makeTokens(triImg);
+  makeCrackers(); makeTokens(triImg, pmrem.fromEquirectangular(T.makeStudioEnv()).texture);
   fx = new FX(scene); fx.setScale(canvas.clientHeight * renderer.getPixelRatio(), camera.fov);
   triangle = new TotalTriangle(scene, SKY_TRI, brandTex, wordWhite);
   // the city on the far horizon, either side of the open ground under the triangle (the middle stays clear
@@ -268,6 +268,8 @@ async function boot() {
   const LATER = ['ambience', 'crackers', 'cheer'];
   await sound.load(v => progress(0.6 + v * 0.38), Object.keys(manifest).filter(n => !LATER.includes(n)));
   sound.load(null, LATER).then(() => { if (mode === 'attract') sound.landing(); });
+  if (sound.ctx) sound.ctx.addEventListener('statechange', syncWaiting);
+  syncWaiting();
   fx.onBurst = (pos, big) => { const d = pos.distanceTo(camera.position); sound.atDistance(['firework_1', 'firework_2', 'firework_3'][(Math.random() * 3) | 0], d, clamp(pos.x / 20, -1, 1), 1.1 * big, 0.92 + Math.random() * 0.16); };
   street.onIgnite = (x, y, z) => fx.sparks(x, y + 0.1, z, 5, 1.3);
   // the triangle is far off in the sky, but its bell should ring as if it were just over the rooftops
@@ -626,6 +628,16 @@ $('btnResume').addEventListener('click', () => { paused = false; sound.unlock();
 const muteBtn = $('mute');
 const syncMute = () => { muteBtn.classList.toggle('muted', !!(sound && sound.muted)); };
 muteBtn.addEventListener('click', e => { e.stopPropagation(); sound.unlock(); sound.setMuted(!sound.muted); syncMute(); });
+// Browsers allow no sound before the first touch. So the start screen's music begins on the first touch
+// anywhere (the promoter waking the phone, a player tapping around), not only on Let's GO; until then the
+// sound button pulses gently, to say there is sound to be had.
+function wakeSound() {
+  if (!sound || !sound.ctx || sound.running) return;
+  sound.unlock();
+  sound.ctx.resume().then(() => { syncWaiting(); if (mode === 'attract') sound.landing(); }).catch(() => { /* still locked */ });
+}
+const syncWaiting = () => muteBtn.classList.toggle('waiting', !!sound && !sound.running && !sound.muted);
+for (const ev of ['pointerdown', 'touchend', 'keydown']) addEventListener(ev, wakeSound, { capture: true, passive: true });
 document.addEventListener('visibilitychange', () => {
   if (!sound) return;
   if (document.hidden) { if (mode === 'play' || mode === 'countdown') { paused = true; drag = null; show('paused'); } sound.suspend(); }
@@ -927,16 +939,43 @@ function drawCourse(ps) {
   }
 }
 
-// The brand in the thing players chase hardest: every golden diya carries the official TOTAL triangle on a gold
-// coin, floating and glowing above its flame, turning gently towards the camera (never past side-on, so the mark
-// is never seen mirrored). The coin keeps the mark's own colours and keeps it from reading as a second player
-// gem when the rush's golden lanes put several on screen. Caught, it pops up and vanishes into its streak.
+// The brand in the thing players chase hardest: every golden diya carries a minted gold coin, floating and
+// glowing above its flame, turning gently towards the camera (never past side-on, so the mark is never seen
+// mirrored). It is a real 3D coin in metallic PBR: the street's lamps and the reflections of the night glint in
+// its rim and brushed field as it turns, and the official TOTAL triangle is set into it in its own colours as
+// glossy enamel. A coin, not a triangle, so the rush's golden lanes never look like extra player gems.
+// Caught, it pops up and vanishes into its streak.
 let tokenMesh;
 const tkM = new THREE.Matrix4(), tkQ = new THREE.Quaternion(), tkS = new THREE.Vector3(), tkP = new THREE.Vector3(), tkE = new THREE.Euler();
-function makeTokens(triImg) {
-  const W = 0.6, g = new THREE.PlaneGeometry(W, W), coin = new THREE.CanvasTexture(T.makeCoin(triImg)); coin.colorSpace = THREE.SRGBColorSpace;
-  const m = new THREE.MeshBasicMaterial({ map: coin, color: new THREE.Color(1.25, 1.25, 1.25), transparent: true, alphaTest: 0.4, side: THREE.DoubleSide, fog: false });
-  tokenMesh = new THREE.InstancedMesh(g, m, 12); tokenMesh.frustumCulled = false; tokenMesh.count = 0; tokenMesh.renderOrder = 3; scene.add(tokenMesh);
+function coinGeometry(R, H, seg) {
+  // two faces (UVs straight across the disc, so the mark sits upright) and a band for the edge, as groups 0 and 1
+  const pos = [], nrm = [], uv = [], idx = [], g = new THREE.BufferGeometry();
+  const v = (x, y, z, nx, ny, nz, u, w) => { pos.push(x, y, z); nrm.push(nx, ny, nz); uv.push(u, w); return pos.length / 3 - 1; };
+  for (const s of [1, -1]) {
+    const c = v(0, 0, (s * H) / 2, 0, 0, s, 0.5, 0.5), ring = [];
+    for (let k = 0; k <= seg; k++) { const a = (k / seg) * Math.PI * 2, x = Math.cos(a) * R, y = Math.sin(a) * R; ring.push(v(x, y, (s * H) / 2, 0, 0, s, 0.5 + (s * x) / (2 * R), 0.5 + y / (2 * R))); }
+    for (let k = 0; k < seg; k++) s > 0 ? idx.push(c, ring[k], ring[k + 1]) : idx.push(c, ring[k + 1], ring[k]);
+  }
+  const faces = idx.length;
+  for (let k = 0; k <= seg; k++) {
+    const a = (k / seg) * Math.PI * 2, x = Math.cos(a), y = Math.sin(a);
+    const t = v(x * R, y * R, H / 2, x, y, 0, k / seg * 6, 1), b = v(x * R, y * R, -H / 2, x, y, 0, k / seg * 6, 0);
+    if (k < seg) idx.push(t, b, t + 2, b, b + 2, t + 2);
+  }
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.addGroup(0, faces, 0); g.addGroup(faces, idx.length - faces, 1);
+  return g;
+}
+function makeTokens(triImg, envMap) {
+  const f = T.makeCoinFace(triImg), tx = (c, srgb) => { const t = new THREE.CanvasTexture(c); t.anisotropy = 4; if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
+  const map = tx(f.map, true);
+  // (just a breath of its own colour as glow, so it never goes black in the darkest stretches of the gali; any
+  // more and the metal reads as flat orange plastic)
+  const face = new THREE.MeshStandardMaterial({ map, roughnessMap: tx(f.rough), metalnessMap: tx(f.metal), bumpMap: tx(f.bump), bumpScale: 2.5, metalness: 1, roughness: 1,
+    envMap, envMapIntensity: 2.6, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.14 });
+  const edgeTex = tx(T.makeCoinEdge()); edgeTex.wrapS = THREE.RepeatWrapping;
+  const edge = new THREE.MeshStandardMaterial({ color: 0xf0cc80, metalness: 1, roughness: 0.25, bumpMap: edgeTex, bumpScale: 1.5, envMap, envMapIntensity: 2.6, emissive: 0x4a3010, emissiveIntensity: 0.4 });
+  tokenMesh = new THREE.InstancedMesh(coinGeometry(0.32, 0.055, 48), [face, edge], 12); tokenMesh.frustumCulled = false; tokenMesh.count = 0; tokenMesh.renderOrder = 3; scene.add(tokenMesh);
 }
 function drawToken(d, z, n) {
   const t = d.lit ? clock - d.litAt : -1;

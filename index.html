@@ -298,6 +298,9 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 #loadMsg { font-size: 14px; color: var(--muted); }
 #mute { position: absolute; z-index: 30; top: calc(env(safe-area-inset-top, 0px) + 10px); left: max(12px, env(safe-area-inset-left, 0px)); width: 42px; height: 42px; border-radius: 50%;
   border: 1px solid rgba(255, 215, 140, .3); background: rgba(10, 8, 24, .5); color: var(--gold); display: grid; place-items: center; cursor: pointer; }
+/* before the first touch the browser holds the sound back: the button breathes until then */
+#mute.waiting { animation: waiting 1.8s ease-in-out infinite; border-color: rgba(255, 207, 90, .8); }
+@keyframes waiting { 50% { box-shadow: 0 0 0 7px rgba(255, 207, 90, .22), 0 0 18px rgba(255, 180, 60, .5); transform: scale(1.06); } }
 #mute svg { width: 20px; height: 20px; } #mute .off { display: none; } #mute.muted .on { display: none; } #mute.muted .off { display: block; }
 #rotate { position: absolute; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; padding: 30px; text-align: center; background: var(--ink); font-size: 18px; font-weight: 600; }
 @media (orientation: landscape) and (max-height: 500px) { #rotate { display: flex; } }

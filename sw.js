@@ -1,6 +1,6 @@
 // Offline support for promoters on patchy networks.
 // Code and page: network first, falling back to the saved copy. Images, sound, the 3D engine and fonts: saved copy first.
-const VERSION = 'diya-dash-v9';
+const VERSION = 'diya-dash-v10';
 const CORE = [
   './', 'index.html', 'manifest.webmanifest',
   'src/main.js', 'src/rules.js', 'src/textures.js', 'src/world.js', 'src/diyas.js', 'src/fx.js', 'src/triangle.js', 'src/player.js', 'src/audio.js', 'src/i18n.js', 'src/stall.js',

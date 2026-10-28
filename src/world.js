@@ -2,7 +2,7 @@
 // Each segment is two draw calls (houses with their props, and signboards), so phones stay smooth.
 import * as THREE from 'three';
 import { mulberry32, actAt, COURSE_END } from './rules.js';
-import { FACADE, BOARD_ROWS, WHITE_UV } from './textures.js';
+import { FACADE, BOARD_ROWS, WHITE_UV, SIGN_CELLS, TUBE_CELL } from './textures.js';
 
 export const SEG = 24, SLOTS = 7, AHEAD = 118;
 export const FRONT_X = 3.45;          // house fronts stand this far from the centre line
@@ -46,7 +46,43 @@ class GB {
     }
     this.quad([x - r, y + h, z + r], [x + r, y + h, z + r], [x + r, y + h, z - r], [x - r, y + h, z - r], [0, 1, 0], lighten(color, 0.1));
   }
+  // a quad wound to face the normal given, whatever order its corners come in
+  quadN(a, b, c, d, nrm, color, uvs) {
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    const dot = (uy * vz - uz * vy) * nrm[0] + (uz * vx - ux * vz) * nrm[1] + (ux * vy - uy * vx) * nrm[2];
+    if (dot >= 0) this.quad(a, b, c, d, nrm, color, uvs);
+    else this.quad(d, c, b, a, nrm, color, uvs && [uvs[3], uvs[2], uvs[1], uvs[0]]);
+  }
+  // a prism round an axis along x (a wheel, a pipe lying across): seg sides of radius r, half-width hw
+  prismX(cx, cy, cz, r, hw, seg, color) {
+    const pt = (k, s) => { const a = (k / seg) * TAU; return [cx + s * hw, cy + Math.sin(a) * r, cz + Math.cos(a) * r]; };
+    const hub = color.clone().multiplyScalar(0.7);
+    for (let k = 0; k < seg; k++) {
+      const a = ((k + 0.5) / seg) * TAU;
+      this.quadN(pt(k, -1), pt(k + 1, -1), pt(k + 1, 1), pt(k, 1), [0, Math.sin(a), Math.cos(a)], color);
+      this.quadN([cx + hw, cy, cz], pt(k, 1), pt(k + 1, 1), pt(k + 1, 1), [1, 0, 0], hub);
+      this.quadN([cx - hw, cy, cz], pt(k, -1), pt(k + 1, -1), pt(k + 1, -1), [-1, 0, 0], hub);
+    }
+  }
   pack() { return { p: new Float32Array(this.p), n: new Float32Array(this.n), c: new Float32Array(this.c), uv: new Float32Array(this.uv), i: new Uint32Array(this.i) }; }
+}
+
+// A parked scooter, the kind on every gali doorstep: lateral axis x, length along z, nose towards f (+1 or -1).
+const SCOOTER_COLS = ['#b3141a', '#1f4f9c', '#e9e5dc', '#151515', '#2c7a3a', '#7a7a80', '#d07a12'].map(h => new THREE.Color(h));
+function scooter(b, xc, zs, f, body) {
+  const tyre = new THREE.Color('#141414'), dark = new THREE.Color('#2a2622'), chrome = new THREE.Color('#bdbdb6');
+  const Z = (a, c) => [zs + f * a, zs + f * c];
+  b.prismX(xc, 0.2, zs + f * 0.56, 0.2, 0.055, 10, tyre); b.prismX(xc, 0.2, zs - f * 0.56, 0.2, 0.055, 10, tyre);
+  b.prismX(xc, 0.2, zs + f * 0.56, 0.1, 0.06, 8, chrome); b.prismX(xc, 0.2, zs - f * 0.56, 0.1, 0.06, 8, chrome);
+  let [a, c] = Z(-0.28, 0.3); b.box(xc - 0.17, 0.2, a, xc + 0.17, 0.27, c, dark);                // footboard
+  [a, c] = Z(-0.78, -0.1); b.box(xc - 0.25, 0.27, a, xc + 0.25, 0.6, c, body);                   // the rear body
+  [a, c] = Z(-0.74, -0.06); b.box(xc - 0.2, 0.6, a, xc + 0.2, 0.68, c, body.clone().multiplyScalar(1.1));
+  [a, c] = Z(-0.7, -0.14); b.box(xc - 0.17, 0.68, a, xc + 0.17, 0.78, c, dark);                  // the seat
+  [a, c] = Z(0.28, 0.44); b.box(xc - 0.21, 0.2, a, xc + 0.21, 0.95, c, body);                    // the leg shield
+  [a, c] = Z(0.42, 0.74); b.box(xc - 0.1, 0.38, a, xc + 0.1, 0.47, c, body);                     // front mudguard
+  [a, c] = Z(0.33, 0.43); b.box(xc - 0.37, 0.95, a, xc + 0.37, 1.0, c, dark);                    // handlebar
+  [a, c] = Z(0.43, 0.49); b.box(xc - 0.07, 0.8, a, xc + 0.07, 0.9, c, new THREE.Color('#fff2c8')); // headlamp
+  for (const s of [-1, 1]) { [a, c] = Z(0.34, 0.38); b.box(xc + s * 0.3, 1.0, a, xc + s * 0.32, 1.18, c, chrome); b.box(xc + s * 0.26, 1.18, a, xc + s * 0.36, 1.24, c, dark); }
 }
 
 /* ---------- one side of one segment ---------- */
@@ -57,6 +93,8 @@ function buildSide(side, act, seed, atlas) {
   const decor = { beads: [], lanterns: [], diyas: [], rangolis: [], lamps: [], jhalars: [], people: [] };
   // the jhalar draw from their own random stream, so adding them leaves the street's layout as it was
   const rj = mulberry32(seed + 7777);
+  // and so does the street's built detail: sills, AC units, pipes, kerbs, scooters, signs, packets, litter
+  const rd = mulberry32(seed + 4242);
   const jhalar = (x, y, z, w, len, roof) => {
     const th = JHALAR_THEMES[act === 0 ? (rj() * 3) | 0 : (rj() * JHALAR_THEMES.length) | 0];
     decor.jhalars.push({ x, y, z, w, len, roof, th, thr: rj() < 0.3 ? rj() * 0.09 : 0.1 + rj() * 0.6, seed: rj() * 100 });
@@ -91,6 +129,40 @@ function buildSide(side, act, seed, atlas) {
     const frac = Math.min(1, w / FACADE.W), uc = (cell.u0 + cell.u1) / 2, du = ((cell.u1 - cell.u0) * frac) / 2;
     const v0 = cell.v0, v1 = cell.v0 + (cell.v1 - cell.v0) * (h / FACADE.H);
     wallQuad(fp, z0, z1, 0, h, 0, WHITE, [[uc - du, v0], [uc + du, v0], [uc + du, v1], [uc - du, v1]]);
+    // Every painted window gets a real stone sill and frame standing proud of the wall, so the lamps
+    // throw shadow and catch light on them. (The upper ones already sit under their chajja.)
+    const sill = lighten(paint, 0.38), jamb = lighten(paint, 0.22), shown = [];
+    for (const wn of cell.wins) {
+      const o = wn.x + wn.w / 2 - FACADE.W / 2;
+      if (Math.abs(o) + wn.w / 2 > w / 2 - 0.12 || wn.y + wn.h > h - 0.2 || wn.door) continue;
+      const zw = side < 0 ? zc - o : zc + o, a0 = zw + wn.w / 2, a1 = zw - wn.w / 2;
+      fp.box(X, wn.y - 0.11, a0 + 0.12, X + inward * 0.17, wn.y - 0.01, a1 - 0.12, sill);
+      fp.box(X, wn.y - 0.01, a0 + 0.09, X + inward * 0.07, wn.y + wn.h, a0, jamb);
+      fp.box(X, wn.y - 0.01, a1, X + inward * 0.07, wn.y + wn.h, a1 - 0.09, jamb);
+      if (wn.y < 3) fp.box(X, wn.y + wn.h, a0 + 0.12, X + inward * 0.12, wn.y + wn.h + 0.1, a1 - 0.12, jamb);   // a lintel on the ground floor
+      if (wn.y > 3) shown.push({ zw, wn });
+    }
+    // a window AC beside an upper window, on its bracket, and a drainpipe down one corner
+    if (shown.length && rd() < 0.4) {
+      const { zw, wn } = shown[(rd() * shown.length) | 0], s2 = rd() < 0.5 ? 1 : -1, za = zw + s2 * (wn.w / 2 + 0.55);
+      if (Math.abs(za - zc) + 0.45 < w / 2) {
+        fp.box(X, wn.y + 0.12, za + 0.42, X + inward * 0.34, wn.y + 0.66, za - 0.42, col('#d6d4cc'));
+        fp.box(X + inward * 0.34, wn.y + 0.2, za + 0.34, X + inward * 0.35, wn.y + 0.58, za - 0.34, col('#4a4c4c'));
+        fp.box(X, wn.y + 0.06, za + 0.3, X + inward * 0.36, wn.y + 0.12, za - 0.3, col('#3a3836'));
+      }
+    }
+    if (rd() < 0.55) { const zp = rd() < 0.5 ? z0 - 0.14 : z1 + 0.14; fp.box(X + inward * 0.04, 0, zp + 0.05, X + inward * 0.14, h + 0.5, zp - 0.05, col('#34322f')); }
+    // the kerb along the street edge, in front of steps and shop platforms
+    fp.box(X + inward * 0.72, 0, z0, X + inward * 0.86, 0.1, z1, col('#8f897e'));
+    // Diwali's litter on the stones: red cracker paper, the odd marigold petal, a scrap of white
+    for (let k = 0, n = act === 0 ? 10 : 18; k < n; k++) {
+      const lx = X + inward * (0.9 + rd() * rd() * 1.9), lz = z0 - rd() * w, q = rd(), a = rd() * TAU;
+      const lc = q < 0.68 ? col(rd() < 0.5 ? '#9e1018' : '#c42226') : q < 0.86 ? col('#e07a00') : col('#cfc6b6');
+      // torn strips of cracker paper (long and thin, a little skewed), smaller petals and scraps
+      const L = q < 0.68 ? 0.03 + rd() * 0.05 : 0.015 + rd() * 0.02, Wd = L * (0.25 + rd() * 0.3), sk = (rd() - 0.5) * 0.4;
+      const ca = Math.cos(a), sa = Math.sin(a), pt = (u, v) => [lx + ca * u - sa * v, 0.006, lz + sa * u + ca * v];
+      fp.quadN(pt(-L, -Wd), pt(L, -Wd + sk * L), pt(L, Wd + sk * L), pt(-L, Wd), [0, 1, 0], lc);
+    }
     // returns at both ends, so height changes and alleys show real walls
     const ret = paint.clone().multiplyScalar(0.62);
     const xa = Math.min(X, X + side * 5), xb = Math.max(X, X + side * 5);
@@ -140,8 +212,23 @@ function buildSide(side, act, seed, atlas) {
         if (side < 0) { fp.quad(a, b, c, e, nTop, ac); fp.quad(e, c, b, a, [0, -1, 0], ac.clone().multiplyScalar(0.5)); }
         else { fp.quad(e, c, b, a, nTop, ac); fp.quad(a, b, c, e, [0, -1, 0], ac.clone().multiplyScalar(0.5)); }
         fp.box(X - side * d, y1 - 0.18, sz0 + 0.2, X - side * (d - 0.02), y1, sz1 - 0.2, lighten(ac, 0.15));
-        if (rj() < 0.6) jhalar(X + inward * (d + 0.03), y1 - 0.16, zc, sw - 0.3, 0.45 + rj() * 0.4, 0);
+        const awnJh = rj() < 0.6;
+        if (awnJh) jhalar(X + inward * (d + 0.03), y1 - 0.16, zc, sw - 0.3, 0.45 + rj() * 0.4, 0);
         if (r() < 0.5) decor.lanterns.push({ x: X + inward * (d - 0.25), y: y1 - 0.55, z: zc + (r() - 0.5) * sw * 0.5, kind: (r() * 3) | 0, thr: r() * 0.5, side });
+        // where there are no rice lights under it, strips of snack packets hang from the awning's edge, the way
+        // every paan shop and general store shows its wares
+        if (!awnJh && rd() < 0.8) {
+          const PACK = ['#ffcc00', '#e3262b', '#1e88e5', '#ff7a00', '#2e9e44', '#8e24aa', '#f2f2f2', '#ffcc00'];
+          const ns = 6 + ((rd() * 4) | 0), xs = X + inward * (d - 0.1);
+          for (let k = 0; k < ns; k++) {
+            const zs = sz0 - 0.45 - (k * (sw - 0.9)) / (ns - 1), np = 3 + ((rd() * 2) | 0), pc = col(PACK[(rd() * PACK.length) | 0]);
+            for (let p = 0; p < np; p++) {
+              const yt = y1 - 0.2 - p * 0.17, cc = p % 2 ? pc.clone().multiplyScalar(0.85) : pc;
+              const A = [xs, yt, zs + 0.065], B = [xs, yt, zs - 0.065], C = [xs, yt - 0.15, zs - 0.065], D = [xs, yt - 0.15, zs + 0.065];
+              fp.quadN(A, B, C, D, [inward, 0, 0], cc); fp.quadN(A, B, C, D, [-inward, 0, 0], cc);
+            }
+          }
+        }
       }
       // signboard: a TOTAL board or a TOTAL-sponsored paan shop on about one shop in three (a little more in the
       // bazaar), the street's own shops on the rest; the sky triangle is the brand's big moment, not the walls
@@ -151,6 +238,22 @@ function buildSide(side, act, seed, atlas) {
       wallQuad(brd, zc + bwid / 2, zc - bwid / 2, by0, by1, 0.1, WHITE, [[0, rv0], [1, rv0], [1, rv1], [0, rv1]]);
       fp.box(X, by0 - 0.04, zc + bwid / 2 + 0.04, X - side * 0.09, by1 + 0.04, zc - bwid / 2 - 0.04, col('#1d1a18'));
       toran(decor, X + inward * 0.06, 3.38, sz0, sz1);
+      // white tube lights on the wall over the opening, under the awning: the light of every Indian shop
+      const [tu0, tu1, tr] = TUBE_CELL, tv0 = 1 - (tr + 0.56) / BOARD_ROWS, tv1 = 1 - (tr + 0.44) / BOARD_ROWS;
+      for (const tz of [zc + sw * 0.22, zc - sw * 0.22]) if (rd() < 0.75) {
+        wallQuad(brd, tz + 0.6, tz - 0.6, 2.93, 3.0, 0.05, WHITE, [[tu0, tv0], [tu1, tv0], [tu1, tv1], [tu0, tv1]]);
+        fp.box(X, 2.92, tz + 0.64, X + inward * 0.04, 3.01, tz - 0.64, col('#e8e8e2'));
+      }
+      // a sign on a bracket out over the street, double-faced, so it faces you as you come down the gali
+      if (rd() < 0.6) {
+        const [su0, su1, srow] = SIGN_CELLS[(rd() * SIGN_CELLS.length) | 0], sv0 = 1 - (srow + 1) / BOARD_ROWS, sv1 = 1 - srow / BOARD_ROWS;
+        const zsg = rd() < 0.5 ? z0 - 0.4 : z1 + 0.4, xa = X + inward * 0.2, xb = X + inward * 1.32, ya = 3.92, yb = 4.27;
+        const lo = Math.min(xa, xb), hi = Math.max(xa, xb);
+        brd.quadN([lo, ya, zsg + 0.03], [hi, ya, zsg + 0.03], [hi, yb, zsg + 0.03], [lo, yb, zsg + 0.03], [0, 0, 1], WHITE, [[su0, sv0], [su1, sv0], [su1, sv1], [su0, sv1]]);
+        brd.quadN([hi, ya, zsg - 0.03], [lo, ya, zsg - 0.03], [lo, yb, zsg - 0.03], [hi, yb, zsg - 0.03], [0, 0, -1], WHITE, [[su0, sv0], [su1, sv0], [su1, sv1], [su0, sv1]]);
+        fp.box(lo - 0.03, ya - 0.03, zsg + 0.022, hi + 0.03, yb + 0.03, zsg - 0.022, col('#1d1a18'));   // (thinner than the faces, so it never covers them)
+        fp.box(X, yb + 0.03, zsg + 0.02, X + inward * 1.36, yb + 0.07, zsg - 0.02, col('#2a2622'));
+      }
     } else {
       // house: doorstep with diyas, rangoli in front, a toran over the door
       fp.box(X, 0, zc + 1.2, X - side * 0.55, 0.18, zc - 1.2, col('#77716a'));
@@ -160,6 +263,8 @@ function buildSide(side, act, seed, atlas) {
       for (let k = 0; k < nd; k++) decor.diyas.push({ x: X + inward * 0.38, y: 0.18, z: zc + 0.95 - (k * 1.9) / Math.max(1, nd - 1), thr: 0.02 + r() * 0.9, f: (r() * 3) | 0, yaw: r() * TAU });
       if (r() < 0.8) decor.rangolis.push({ x: X + inward * 1.45, z: zc, size: 1.25 + r() * 0.35, kind: (r() * 4) | 0, rot: r() * TAU });
       if (act > 0 || r() < 0.6) toran(decor, X + inward * 0.06, 2.72, zc + 0.95, zc - 0.95);
+      // a scooter parked beside the doorstep, clear of the rangoli and the step
+      if (rd() < 0.45 && w > 5.6) { const s2 = rd() < 0.5 ? 1 : -1; scooter(fp, X + inward * 1.25, zc + s2 * (2.05 + rd() * 0.5), rd() < 0.5 ? 1 : -1, SCOOTER_COLS[(rd() * SCOOTER_COLS.length) | 0]); }
     }
     z = z1;
   }
@@ -213,7 +318,9 @@ const JHALAR_THEMES = [
   ['#ffd39a', '#fff0c8', 0], ['#ffc44d', '#ff9a2e', 0], ['#ffd39a', '#ffc44d', 1],
   ['#ff3d7f', '#3fc8ff', 1], ['#ff4b2b', '#3ad06b', 0], ['#b45bff', '#ffd23f', 1],
 ].map(([a, b, run]) => ({ a: col(a), b: col(b), run }));
-const BEADS_PER_SLOT = 560, BULBS_PER_SLOT = 150, LANTERNS_PER_SLOT = 10, RANGOLI_PER_SLOT = 8, WIRES_PER_SLOT = 260, JHALARS_PER_SLOT = 18, PEOPLE_PER_SLOT = 16;
+const BEADS_PER_SLOT = 560, BULBS_PER_SLOT = 150, LANTERNS_PER_SLOT = 10, RANGOLI_PER_SLOT = 8, WIRES_PER_SLOT = 260, JHALARS_PER_SLOT = 18, PEOPLE_PER_SLOT = 16, FLAGS_PER_SLOT = 48;
+// paper flags strung across the street for the festival: saffron, white, green, pink, yellow, blue
+const FLAG_COLS = ['#ff8a1a', '#f2efe6', '#1f9a4a', '#ff4f9a', '#ffd23a', '#2f7cff'].map(col);
 // Lamps that light the house fronts per pixel: the nearest SL_N shop lights, door lamps and curtain lights.
 // Further down the street the rest become soft washes on their own wall, cross-faded so none pops on.
 const SL_N = 16;
@@ -238,9 +345,31 @@ export class Street {
         .replace('#include <project_vertex>', '#include <project_vertex>\n  vSLW = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz; vSLN = objectNormal;');
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>\nuniform float uGlow; uniform vec4 uSLPos[ ${SL_N} ]; uniform vec4 uSLCol[ ${SL_N} ]; varying vec3 vSLW; varying vec3 vSLN;`)
+        // Rooms behind the glass (a lite take on interior mapping): wherever the window-light map says there is
+        // a room or a shop, the painted interior is sampled where it would be seen if it stood back behind the
+        // wall, by the view angle: a shop 0.8 m deep, an upstairs room 0.35 m. Past its edge the opening shows
+        // its dark reveal. The shutters and frames, painted on the wall itself, stay where they are.
+        .replace('#include <map_fragment>', /* glsl */`
+          // (the window-light map is read once here, at the shifted spot, and reused for the glow below)
+          vec2 pUv = vMapUv; float reveal = 0.0; vec4 emP = vec4( 0.0 );
+          #ifdef USE_EMISSIVEMAP
+            emP = texture2D( emissiveMap, vMapUv );
+            if ( emP.g > 0.01 && abs( vSLN.x ) > 0.5 ) {
+              float inw = -sign( vSLW.x ); vec3 V = normalize( cameraPosition - vSLW ); float vn = V.x * inw;
+              if ( vn > 0.02 ) {
+                float depth = vSLW.y < 3.4 ? 0.8 : 0.35;
+                pUv = vMapUv - vec2( -V.z * inw, V.y ) / max( vn, 0.3 ) * depth * vec2( 0.0357, 0.0353 );
+                emP = texture2D( emissiveMap, pUv );
+                if ( emP.g < 0.01 ) { reveal = 1.0; pUv = vMapUv; emP = vec4( 0.0 ); }
+              }
+            }
+          #endif
+          #ifdef USE_MAP
+            diffuseColor *= reveal > 0.5 ? vec4( 0.045, 0.036, 0.03, 1.0 ) : texture2D( map, pUv );   // (dark enough that the wall's relief never ghosts through)
+          #endif`)
         .replace('#include <emissivemap_fragment>', /* glsl */`
           #ifdef USE_EMISSIVEMAP
-            vec4 emT = texture2D( emissiveMap, vEmissiveMapUv );
+            vec4 emT = emP;
             float on = step( 0.02, emT.r ) * smoothstep( emT.r - 0.05, emT.r, uGlow );
             vec3 tint = mix( vec3( 1.0 ), vec3( 0.62, 0.78, 1.25 ), emT.b );
             // lit windows glow in the colours of the room behind them
@@ -341,6 +470,11 @@ export class Street {
     this.bulbMeta = new Float32Array(BULBS_PER_SLOT * SLOTS * 4).fill(-1);
     this.bulbPhase = new Float32Array(BULBS_PER_SLOT * SLOTS);
     this.lanternMeta = new Float32Array(LANTERNS_PER_SLOT * SLOTS * 4).fill(-1);
+    // paper bunting: little triangles on strings across the street, lit by the lamps below
+    const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute([-0.1, 0, 0, 0.1, 0, 0, 0, -0.24, 0], 3)); fg.computeVertexNormals();
+    this.flags = new THREE.InstancedMesh(fg, new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), FLAGS_PER_SLOT * SLOTS);
+    this.flags.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(FLAGS_PER_SLOT * SLOTS * 3), 3);
+    this.flags.frustumCulled = false; scene.add(this.flags);
     this.wirePos = new Float32Array(SLOTS * WIRES_PER_SLOT * 6);
     const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.BufferAttribute(this.wirePos, 3).setUsage(THREE.DynamicDrawUsage));
     this.wires = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x0a0909 })); this.wires.frustumCulled = false;
@@ -556,6 +690,24 @@ export class Street {
         px = x; py = y; pz = z;
       }
     }
+    // bunting across the street, from its own stream so the rest of the slot is laid out as before
+    const rb = mulberry32(mod(k * 104729 + 7, 1e9)), fc = this.flags.instanceColor.array;
+    let F = idx * FLAGS_PER_SLOT; const FEnd = F + FLAGS_PER_SLOT;
+    for (let bi = 0, nb = beyond ? 0 : act === 0 ? 1 : 2; bi < nb; bi++) {
+      const zz = -s0 - (bi + 0.3 + rb() * 0.4) * (SEG / nb), yl = 4.85 + rb() * 0.4, yr = 4.85 + rb() * 0.4, sag = 0.3 + rb() * 0.25, n = 21;
+      let px = -FRONT_X, py = yl;
+      for (let j = 0; j <= n; j++) {
+        const t = j / n, x = -FRONT_X + 2 * FRONT_X * t, y = yl + (yr - yl) * t - Math.sin(t * Math.PI) * sag;
+        if (j > 0 && w < wEnd) { this.wirePos.set([px, py, zz, x, y, zz], w); w += 6; }
+        px = x; py = y;
+        if (j > 0 && j < n && F < FEnd) {
+          M.compose(this._v.set(x, y, zz), this._q.setFromAxisAngle(this._up, (rb() - 0.5) * 0.7), S); this.flags.setMatrixAt(F, M); this._q.identity();
+          const c = FLAG_COLS[(j + bi) % FLAG_COLS.length]; fc[F * 3] = c.r; fc[F * 3 + 1] = c.g; fc[F * 3 + 2] = c.b; F++;
+        }
+      }
+    }
+    for (; F < FEnd; F++) { M.makeScale(0, 0, 0); this.flags.setMatrixAt(F, M); }
+    this.flags.instanceMatrix.needsUpdate = true; this.flags.instanceColor.needsUpdate = true;
     for (; u < uEnd; u++) { M.makeScale(0, 0, 0); this.bulbs.setMatrixAt(u, M); this.bulbMeta[u * 4 + 3] = -1; }
     for (; w < wEnd; w++) this.wirePos[w] = 0;
     this.beads.instanceMatrix.needsUpdate = true; this.beads.instanceColor.needsUpdate = true;
