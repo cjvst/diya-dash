@@ -6,4 +6,5 @@ export const S = {
   prizes: { pack: '1 Pack', sticks3: '3 Sticks', sticks2: '2 Sticks', stick1: '1 Stick' },
   flame: ['', 'Flame up!', 'Blazing!', 'Mahajyoti!'], loading: 'Lighting the gali', paused: 'Paused', resume: 'Resume', rotate: 'Turn your phone upright to play',
   full: 'The whole TOTAL triangle is lit!',
+  fireMeter: 'Fire', fireOn: 'On fire ×2', fire: 'On fire!', rush: 'Final rush!', close: 'Close!', combo: 'combo', dodge: 'Dodge the crackers!',
 };

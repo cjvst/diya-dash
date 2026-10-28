@@ -33,8 +33,81 @@ export class Sound {
     this.music = c.createGain(); this.music.gain.value = MUSIC; this.music.connect(this.master);
     this.duckNode = c.createGain(); this.duckNode.connect(this.music);
     this.amb = c.createGain(); this.amb.gain.value = 0; this.amb.connect(this.master);
+    // the music bed passes through a pump that dips on every kick, the way dance music breathes
+    this.pump = c.createGain(); this.pump.connect(this.duckNode);
+    // white noise, for synthesised shakers, risers, whooshes and the body of impacts
+    const nb = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), nd = nb.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    this.noise = nb;
+    this.int = 0; this.fire = false; this.rush = false; this.stepNext = 0;
     setInterval(() => this.schedule(), 25);
   }
+
+  /* ---------- synthesised sound design: no files, built on the fly ---------- */
+  // A noise source through a filter and an envelope, into a bus. Returns the filter so callers can sweep it.
+  noiseHit(at, dur, { type = 'bandpass', f0 = 1000, f1 = f0, q = 1, gain = 0.3, attack = 0.005, bus, pan = 0 } = {}) {
+    const c = this.ctx; if (!c) return;
+    const src = c.createBufferSource(); src.buffer = this.noise; src.loop = true;
+    const flt = c.createBiquadFilter(); flt.type = type; flt.Q.value = q;
+    flt.frequency.setValueAtTime(f0, at); if (f1 !== f0) flt.frequency.exponentialRampToValueAtTime(f1, at + dur);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(gain, at + attack); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    let node = g; if (pan && c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = pan; g.connect(p); node = p; }
+    src.connect(flt); flt.connect(g); node.connect(bus || this.sfx);
+    src.start(at, Math.random() * 1.5); src.stop(at + dur + 0.05);
+  }
+  // A pitched thump: a sine that drops in pitch. The top of the sweep is what a phone speaker can play.
+  thump(at, { f0 = 180, f1 = 50, dur = 0.32, gain = 0.6, bus } = {}) {
+    const c = this.ctx; if (!c) return;
+    const o = c.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(f0, at); o.frequency.exponentialRampToValueAtTime(f1, at + dur * 0.35);
+    const g = c.createGain(); g.gain.setValueAtTime(gain, at); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g); g.connect(bus || this.music); o.start(at); o.stop(at + dur + 0.02);
+  }
+  // the beat: a punchy kick (pitch drop plus a click so it carries on a phone), and the bed breathes with it
+  kick(at, gain = 0.5) {
+    this.thump(at, { f0: 210, f1: 52, dur: 0.3, gain });
+    this.noiseHit(at, 0.03, { type: 'highpass', f0: 2500, gain: gain * 0.35, bus: this.music });
+    const p = this.pump.gain; p.setValueAtTime(1, at); p.linearRampToValueAtTime(0.7, at + 0.02); p.linearRampToValueAtTime(1, at + 0.24);
+  }
+  hat(at, gain = 0.12) { this.noiseHit(at, 0.045, { type: 'highpass', f0: 7000, gain, bus: this.music }); }
+  // tension: a rising sweep of noise and tone, for the build into On Fire and the final rush
+  riser(dur = 1.6, gain = 0.22) {
+    if (!this.running) return; const c = this.ctx, t = c.currentTime;
+    this.noiseHit(t, dur, { f0: 350, f1: 6500, q: 1.6, gain, attack: dur * 0.9 });
+    const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(880, t + dur);
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1800;
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain * 0.35, t + dur * 0.95); g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.04);
+    o.connect(f); f.connect(g); g.connect(this.sfx); o.start(t); o.stop(t + dur + 0.06);
+  }
+  // a hit you feel: a deep drop with a burst of noise on top; dark for a firecracker in the face
+  impact(gain = 0.9, dark = false) {
+    if (!this.running) return; const t = this.ctx.currentTime;
+    this.thump(t, { f0: dark ? 140 : 190, f1: 34, dur: 0.7, gain, bus: this.sfx });
+    this.noiseHit(t, dark ? 0.5 : 0.35, { type: 'lowpass', f0: dark ? 900 : 2600, f1: 200, gain: gain * 0.5 });
+  }
+  // a near miss rushing past, panned to the side it passed on
+  whoosh(pan = 0) {
+    if (!this.running) return; const t = this.ctx.currentTime;
+    this.noiseHit(t, 0.38, { f0: 700, f1: 3800, q: 2.2, gain: 0.32, attack: 0.16, pan });
+  }
+  // lub-dub, for the last seconds
+  heartbeat() {
+    if (!this.running) return; const t = this.ctx.currentTime;
+    this.thump(t, { f0: 120, f1: 48, dur: 0.22, gain: 0.55, bus: this.sfx }); this.thump(t + 0.17, { f0: 105, f1: 44, dur: 0.24, gain: 0.42, bus: this.sfx });
+  }
+  // glints on top of the bell while On Fire: two quick notes a fifth apart, climbing with the streak
+  sparkle(step) {
+    if (!this.running) return; const c = this.ctx, t = c.currentTime;
+    const base = ROOT_HZ * 2 * Math.pow(2, LADDER[Math.min(step, LADDER.length - 1)] / 12 / 2);
+    [0, 0.06].forEach((d, i) => {
+      const o = c.createOscillator(); o.type = 'triangle'; o.frequency.value = base * (i ? 1.5 : 1);
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.09, t + d + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.22);
+      o.connect(g); g.connect(this.sfx); o.start(t + d); o.stop(t + d + 0.25);
+    });
+  }
+  // intensity of the run's music: 0 the dark gali, 1 the bazaar, 2 the approach; fire and rush lift it further
+  setFire(on) { this.fire = on; this.level('music_track', on ? 1.1 : this.int ? 1 : 0.85, 0.15); }
+  setRush() { this.rush = true; this.level('music_track', 1.15, 0.3); this.level('music_tabla', 1, 0.3); }
   async load(onProgress) {
     if (!this.ctx) return;
     const names = Object.keys(this.manifest); let done = 0;
@@ -139,13 +212,15 @@ export class Sound {
   beginRun() {
     if (!this.ctx) return;
     this.t0 = this.ctx.currentTime + 0.05;
-    this.loop('music_track', { gain: 0.85, at: this.t0, fade: 0.05 });
+    this.int = 0; this.fire = false; this.rush = false; this.rollTo = 0; this.groove = true; this.stepNext = this.t0; this.settled = false;
+    this.loop('music_track', { gain: 0.85, at: this.t0, fade: 0.05, bus: this.pump });
   }
   act(n) {
     if (!this.ctx || !this.t0) return;
+    this.int = n;
     // measured: the tabla loop's beat sits 12 ms into the file, the dholak attacks 4-9 ms in; both are pulled forward
     if (n === 1) { this.loop('music_tabla', { gain: 0.9, at: this.nextBar() - 0.012, fade: 0.6 }); this.level('music_track', 0.95); }
-    if (n === 2) { this.groove = true; this.grooveNext = this.nextBar(); this.level('music_track', 1); this.level('music_tabla', 0.7); }
+    if (n === 2) { this.level('music_track', 1); this.level('music_tabla', 0.7); }
     this.amb.gain.setTargetAtTime([0.7, 0.85, 1][n] || 1, this.ctx.currentTime, 1);
   }
   // Seconds from now to the first bar line at least `lead` seconds away, so the finale's big moment
@@ -162,6 +237,7 @@ export class Sound {
     if (!this.running) return;
     const c = this.ctx, hit = c.currentTime + inSec;
     this.groove = true; if (!this.t0) this.t0 = c.currentTime;
+    this.fire = false; this.rush = false; this.hotFrom = hit;       // the beat drops out for the roll, then comes back hot
     this.level('music_track', 1, 0.3); this.level('music_tabla', 0.9, 0.3);
     this.rollFrom = hit - BAR; this.rollTo = hit;
     const n = 16, step = BAR / n;
@@ -181,21 +257,35 @@ export class Sound {
     this.play('crackers', { at: hit + 0.6, gain: 0.7, pan: 0.4 });
   }
   // once the result is on screen, the music settles under the promoter's voice
-  settle() { this.level('music_track', 0.55, 1.5); this.level('music_tabla', 0.35, 1.5); }
-  stopRunMusic(tc = 0.6) { this.groove = false; this.rollTo = 0; this.stopLoop('music_track', tc); this.stopLoop('music_tabla', tc); }
+  settle() { this.settled = true; this.hotFrom = 0; this.level('music_track', 0.55, 1.5); this.level('music_tabla', 0.35, 1.5); }
+  stopRunMusic(tc = 0.6) { this.groove = false; this.rollTo = 0; this.hotFrom = 0; this.fire = this.rush = this.settled = false; this.stopLoop('music_track', tc); this.stopLoop('music_tabla', tc); }
+  // The run's beat, sequenced a sixteenth at a time on the music clock and layered by intensity:
+  // the dark gali has a half-time kick under the track; the bazaar brings four-to-the-floor, offbeat shakers
+  // and the dholak's three-three-two lilt; On Fire and the final rush double the dholak and the shakers and
+  // push into every bar. The finale's roll bar drops the beat out, so the strike lands after a breath.
   schedule() {
     this.ambienceTick();
-    if (!this.groove || !this.running) return;
-    const c = this.ctx, step = BEAT / 2;
-    if (this.grooveNext < c.currentTime) this.grooveNext = this.t0 + Math.ceil((c.currentTime - this.t0) / step) * step;
-    while (this.grooveNext < c.currentTime + 0.12) {
-      // the finale's roll owns its bar
-      if (this.rollTo && this.grooveNext >= this.rollFrom - 0.01 && this.grooveNext < this.rollTo - 0.01) { this.grooveNext += step; continue; }
-      const i = Math.round((this.grooveNext - this.t0) / step) % 8;
-      const hit = GROOVE[i];
-      if (hit) this.play(hit === 'b' ? 'music_hit_dholak_bass' : 'music_hit_dholak_treble', { at: this.grooveNext - (hit === 'b' ? 0.004 : 0.009), gain: i === 0 ? 1 : 0.8, bus: this.duckNode });
-      if (i === 6 && Math.round((this.grooveNext - this.t0) / BAR) % 2 === 1) this.play('music_hit_tabla_na', { at: this.grooveNext + step / 2 - 0.009, gain: 0.7, bus: this.duckNode });
-      this.grooveNext += step;
+    if (!this.groove || !this.running || !this.t0) return;
+    const c = this.ctx, step = BEAT / 4;
+    if (this.stepNext < c.currentTime) this.stepNext = this.t0 + Math.ceil((c.currentTime - this.t0) / step) * step;
+    while (this.stepNext < c.currentTime + 0.12) {
+      const t = this.stepNext, n = Math.round((t - this.t0) / step), i = n % 16;
+      this.stepNext += step;
+      if (this.rollTo && t >= this.rollFrom - 0.01 && t < this.rollTo - 0.01) continue;
+      const hot = this.fire || this.rush || t >= (this.hotFrom || Infinity), lvl = this.int, calm = this.settled;
+      if (i % 4 === 0 && (calm ? i % 8 === 0 : lvl >= 1 || hot || i % 8 === 0)) this.kick(t, calm ? 0.24 : lvl >= 1 || hot ? 0.36 : 0.28);
+      if (calm) continue;
+      if (hot && i === 14) this.kick(t, 0.22);
+      if (hot || (lvl >= 1 && i % 4 === 2)) this.hat(t, hot ? (i % 4 === 2 ? 0.12 : 0.06) : 0.09);
+      if (lvl >= 1 || hot) {
+        // eighths normally, sixteenths when hot: the same lilt, twice as fast
+        const j = hot ? i % 8 : i % 2 === 0 ? (i / 2) % 8 : -1;
+        const hit = j < 0 ? '' : GROOVE[j];
+        const g = (hot ? 0.85 : lvl >= 2 ? 0.8 : 0.68) * (j === 0 ? 1 : 0.8);
+        if (hit) this.play(hit === 'b' ? 'music_hit_dholak_bass' : 'music_hit_dholak_treble', { at: t - (hit === 'b' ? 0.004 : 0.009), gain: g, bus: this.duckNode });
+        if (!hot && i === 13 && Math.round((t - this.t0) / BAR) % 2 === 1) this.play('music_hit_tabla_na', { at: t - 0.009, gain: 0.7, bus: this.duckNode });
+        if (hot && i === 15) this.play('music_hit_tabla_na', { at: t - 0.009, gain: 0.55, bus: this.duckNode });
+      }
     }
   }
 }

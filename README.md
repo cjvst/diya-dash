@@ -9,6 +9,11 @@ A 30-second mobile web game for TOTAL sampling activations. You carry the TOTAL 
 Light every panel and the official mark appears in the sky. The score is triangles lit.
 
 - **Play:** drag anywhere and the TOTAL gem follows your finger 1:1. A streak grows your flame (wider reach, side flames, "Mahajyoti"), and a miss shrinks it. Golden diyas count 3. Three acts: dark gali, bazaar, festival chowk.
+- **Adrenaline:**
+  - **On Fire:** every catch fills the Fire meter. When it's full, the flame burns white-hot for 5 seconds: points double, the catch widens, the lens and screen edges flare, and the music goes double-time.
+  - **Firecrackers:** anaar fountains and chakri spinners sit on red rings in the road, from the bazaar on (sometimes in pairs to thread). Hitting one costs the streak, the meter and a flame level. Skimming past is a "Close!" bonus.
+  - **Final rush:** the last 7 seconds surge from 15 to 19 m/s down golden lanes, with every light in the street up and a heartbeat over the last five seconds.
+  - **Feedback:** points pop up where they're earned, and a combo counter sits beside the road.
 - **Look:** real-time 3D (three.js / WebGL). It is true night, lit only by the street's own lights, which are built for phone screens played outdoors:
   - Shop and door lamps light the house fronts per pixel and throw pools on the stones that show the paving's texture.
   - Rice-light jhalars run along the rooflines and hang down the facades.
@@ -18,7 +23,19 @@ Light every panel and the official mark appears in the sky. The score is triangl
 
   The houses, shops, lights and fireworks are all built in code. The only image files are the two official brand assets.
 - **Brand:** the official TOTAL triangle and wordmark come from the brand team's *TOTAL Brand Asset* deck (21 Oct 2026). They appear on the player gem, the HUD, the shop boards in the street, the sky triangle and its wordmark, and the first and last screens. The screens follow the brand team's notes to the agency.
-- **Sound:** CC0 recordings (Freesound, Kenney), levelled and mixed live: music on a 130 BPM clock, with tabla and a dholak groove entering act by act. Measured offline: about −15 LUFS, music and effects balanced, no clipping.
+- **Sound:** CC0 recordings (Freesound, Kenney) and synthesised sound design, mixed live on a 130 BPM clock. The score is adaptive:
+  - **Dark gali:** a half-time kick under the track.
+  - **Bazaar:** four-to-the-floor with a pumping bed, offbeat shakers and the dholak lilt.
+  - **On Fire and the rush:** double-time dholak and sixteenth-note shakers.
+  - **Finale:** the beat drops out for the roll, then comes back hot after the strike.
+  - **Synthesised effects:** risers, sub-bass impacts, near-miss whooshes, a heartbeat, and sparkles on catches while On Fire.
+
+  Measured offline: about −15 dB RMS, the same level as before; transient peaks are rounded by the soft clipper.
+- **Haptics (Android):** catches tick harder as the streak grows, golds double-tap, every tenth catch rolls, a near miss flicks, a firecracker thumps, On Fire rumbles, the rush surges, and the last five seconds beat like a heart. iPhone browsers have no vibration.
+- **Camera and controls:**
+  - The camera follows the gem half way across, so the gem never touches the screen edge.
+  - The full road is about 250 px of thumb travel.
+  - As the run speeds up, the camera rises a little and looks further down the road, and the lens widens (64° to about 72°, more when On Fire).
 
 ## Live link
 **https://cjvst.github.io/diya-dash/** for the team to test on phones. It is hosted on GitHub Pages from the `cjvst/diya-dash` repo. The page tells search engines not to index it, but anyone with the link can open it.
@@ -35,18 +52,19 @@ then open `http://localhost:8000/`. After the first visit it works offline (`sw.
 ## Prize tiers — edit in `src/rules.js`, `CONFIG.TIERS`
 | Triangles lit | Prize |
 | --- | --- |
-| 58+ | 1 pack |
-| 48+ | 3 sticks |
-| 38+ | 2 sticks |
-| 28+ | 1 stick |
-| below 28 | Happy Diwali (no prize) |
+| 122+ | 1 pack |
+| 100+ | 3 sticks |
+| 78+ | 2 sticks |
+| 50+ | 1 stick |
+| below 50 | Happy Diwali (no prize) |
 
-Calibration: 300 bot runs per skill level, same rules as the game.
+Calibration: 300 bot runs per skill level, same rules as the game. The bot dodges firecrackers when it sees them.
 
-- A run offers about 52 diyas (6 of them gold), so the maximum score is about 64. That equals the 64 panels of the triangle, so lighting it all means a top run.
-- A player who never moves lights about 11 and wins nothing.
-- A bot that goes for 75% of diyas (with aiming error) has a median of 52, which wins 3 sticks.
-- A near-perfect bot wins the pack about 90% of the time.
+- A run offers about 66 diyas and about 10 firecrackers. On Fire doubles points, so scores run well past the triangle's 64 panels; a decent run fills the triangle and reveals the mark.
+- A player who never moves scores about 23 and wins nothing (1% luck into 1 stick).
+- A casual player (goes for 45% of diyas) has a median of 61: mostly 1 stick, about a fifth win nothing.
+- A good player (75%) has a median of 109: mostly 3 sticks, about a fifth win the pack.
+- A near-perfect player wins the pack 95% of the time.
 
 To re-check after changing rules:
 ```

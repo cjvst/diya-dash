@@ -87,12 +87,50 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
   -webkit-text-stroke: 3px rgba(20, 10, 30, .85); paint-order: stroke fill; text-shadow: 0 6px 24px rgba(0, 0, 0, .55), 0 0 40px rgba(255, 170, 60, .55); }
 .count.pop { animation: pop .75s ease-out forwards; }
 .count.go { font-size: 68px; color: var(--gold); }
+/* On Fire and the final rush: big, hot, over the sky, gone in under a second */
+.count.fire, .count.rush { top: 20%; font-size: 58px; letter-spacing: .02em; color: #fff3c4; -webkit-text-stroke: 3px rgba(60, 10, 0, .9);
+  text-shadow: 0 0 18px rgba(255, 120, 20, .95), 0 0 46px rgba(255, 80, 0, .75); }
+.count.rush { color: #fff; text-shadow: 0 0 18px rgba(255, 60, 30, .95), 0 0 46px rgba(255, 40, 0, .75); }
+.count.fire.pop, .count.rush.pop { animation: pop 1s ease-out forwards; }
+/* On Fire meter: fills with each catch, turns white-hot and drains while it burns */
+.firemeter { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 58px); left: 62px; right: 120px; height: 20px; display: flex; align-items: center; gap: 8px;
+  padding: 0 12px; border-radius: 999px; background: rgba(10, 8, 24, .66); }
+.firemeter span { font: 800 11px/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: rgba(255, 207, 90, .85); white-space: nowrap; }
+.fire-bar { position: relative; flex: 1; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+.fire-bar i { position: absolute; inset: 0; background: linear-gradient(90deg, #ff5a1a, #ffb02e); transform-origin: left; transform: scaleX(0); }
+.firemeter.full span { color: #fff; }
+.firemeter.on { background: rgba(70, 20, 0, .8); box-shadow: 0 0 18px rgba(255, 120, 20, .7); }
+.firemeter.on span { color: #fff; animation: flick .3s steps(2) infinite; }
+.firemeter.on .fire-bar i { background: linear-gradient(90deg, #ffd27a, #fff); }
+@keyframes flick { 50% { color: #ffcf5a; } }
+/* the combo: at the side, out of the lane, growing with the streak */
+.combo { position: absolute; left: 14px; top: 47%; display: flex; flex-direction: column; align-items: flex-start; opacity: 0; transition: opacity .25s; }
+.combo.on { opacity: 1; }
+.combo b { font: 800 44px/1 var(--f-body); color: #fff; font-variant-numeric: tabular-nums; -webkit-text-stroke: 2px rgba(20, 10, 30, .85); paint-order: stroke fill;
+  text-shadow: 0 0 16px rgba(255, 150, 40, .6); }
+.combo b::before { content: '×'; font-size: .6em; margin-right: 2px; color: var(--gold); }
+.combo span { font: 800 11px/1 var(--f-body); letter-spacing: .18em; text-transform: uppercase; color: var(--gold); margin-top: 2px; padding: 3px 7px; border-radius: 999px; background: rgba(10, 8, 24, .7); }
+.combo.hot b { color: #fff3c4; text-shadow: 0 0 18px rgba(255, 110, 20, .95); }
+.combo.bump b { animation: cbump .22s ease-out; }
+.combo.drop { animation: cdrop .45s ease-in forwards; }
+@keyframes cbump { 40% { transform: scale(1.28); } }
+@keyframes cdrop { 0% { opacity: 1; } 30% { transform: translateX(-4px) rotate(-4deg); } 60% { transform: translateX(4px) rotate(3deg); } 100% { opacity: 0; transform: translateY(16px); } }
+/* points rising from where they were earned */
+.pops { position: absolute; inset: 0; overflow: hidden; }
+.pops div { position: absolute; left: 0; top: 0; font: 800 22px/1 var(--f-body); color: #fff; white-space: nowrap; opacity: 0; will-change: transform, opacity;
+  -webkit-text-stroke: 2px rgba(20, 10, 30, .8); paint-order: stroke fill; text-shadow: 0 0 12px rgba(255, 160, 40, .6); }
+.pops div.gold { color: #ffd34a; font-size: 28px; }
+.pops div.fire { color: #fff3c4; font-size: 26px; text-shadow: 0 0 14px rgba(255, 100, 20, .9); }
+.pops div.near { color: #9fe8ff; font-size: 20px; text-shadow: 0 0 12px rgba(60, 170, 255, .8); }
+.pops div.go { animation: rise .75s ease-out forwards; }
+@keyframes rise { 0% { opacity: 0; translate: -50% 0; scale: .6; } 15% { opacity: 1; scale: 1.15; } 30% { scale: 1; } 100% { opacity: 0; translate: -50% -70px; } }
 /* the last five seconds sit over the sky triangle, which is gold by then: white on a dark halo reads on it */
 .count.late { top: 13%; font-size: 92px; color: #fff; -webkit-text-stroke: 4px rgba(20, 10, 30, .9);
   text-shadow: 0 0 22px rgba(10, 5, 25, .95), 0 0 6px rgba(10, 5, 25, .9), 0 6px 24px rgba(0, 0, 0, .6); }
 @keyframes pop { 0% { opacity: 0; transform: scale(1.6); } 18% { opacity: 1; transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: scale(.92); } }
 .hint { position: absolute; bottom: calc(env(safe-area-inset-bottom, 0px) + 9%); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; transition: opacity .4s ease; }
 .hint.on { opacity: 1; }
+.hint.warn span { background: rgba(120, 20, 0, .85); color: #fff; box-shadow: 0 0 18px rgba(255, 80, 20, .6); }
 .hint svg { width: 64px; height: 64px; animation: swipe 1.6s ease-in-out infinite; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .7)); }
 .hint span { font-weight: 800; font-size: 17px; padding: 8px 18px; border-radius: 999px; background: rgba(10, 8, 24, .75); }
 @keyframes swipe { 0%, 100% { transform: translateX(-38px); } 50% { transform: translateX(38px); } }
@@ -170,11 +208,14 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
   <div id="hud" aria-hidden="true">
     <div class="hud-bar"><b class="secs-left" id="secsLeft">30</b><div class="timer" id="timer"><i id="timerFill"></i></div></div>
     <div class="score"><img src="assets/brand/total-triangle.png" alt=""><b id="score">0</b></div>
+    <div class="firemeter" id="fire"><span id="fireLabel" data-t="fireMeter">Fire</span><div class="fire-bar"><i id="fireFill"></i></div></div>
+    <div class="combo" id="combo"><b id="comboN">0</b><span data-t="combo">combo</span></div>
+    <div class="pops" id="pops"></div>
     <div class="badge" id="badge"></div>
     <div class="count" id="count"></div>
     <div class="hint" id="hint">
       <svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><circle cx="32" cy="30" r="13" fill="rgba(255,207,90,.25)"/><path d="M28 50V30a4 4 0 0 1 8 0v8l7 2a4 4 0 0 1 3 4.5L44 54H30z" fill="#fff4d6" stroke="#2a1200" stroke-width="2" stroke-linejoin="round"/></svg>
-      <span data-t="hint">Drag to move your flame</span>
+      <span data-t="hint" id="hintText">Drag to move your flame</span>
     </div>
   </div>
 

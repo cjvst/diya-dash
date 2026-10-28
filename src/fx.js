@@ -2,7 +2,7 @@
 // One pool of point sprites, one draw call.
 import * as THREE from 'three';
 
-const CAP = 3600;          // the finale's comet, barrage and glitter peak at about 3,000 at once
+const CAP = 5000;          // the finale's comet, barrage and glitter peak at about 3,000; firecrackers add their sparks in play
 const PALETTES = [
   [[1.0, 0.78, 0.35], [1.0, 0.95, 0.8]],                 // gold and white
   [[1.0, 0.25, 0.18], [1.0, 0.7, 0.3]],                   // red and amber
@@ -114,10 +114,12 @@ export class FX {
         for (let j = 0; j < 5; j++) this.emit(x, y, z, (Math.random() - 0.5) * 6 * grow, (Math.random() - 0.5) * 6 * grow, (Math.random() - 0.5) * 6 * grow, 0.35 * grow, 3.2, 2.0, 0.6, 0.5, 2, -3 * grow, 1);
         this.emit(x, y, z, 0, 0, 0, 1.9 * grow, 4.6, 4.0, 3.2, 0.05, 0, 0, 0);
       } else {
-        const steps = Math.min(36, Math.max(3, Math.ceil(seg / 0.13)));
+        // thin while it is still close to the camera, full width once it is on its way up
+        const near = Math.min(1, 0.35 + Math.hypot(x - s.a.x, y - s.a.y, z - s.a.z) / 10);
+        const steps = Math.min(36, Math.max(3, Math.ceil(seg / (0.13 * near))));
         for (let j = 0; j < steps; j++) {
           const f = j / steps;
-          this.emit(s.last.x + (x - s.last.x) * f, s.last.y + (y - s.last.y) * f, s.last.z + (z - s.last.z) * f, 0, 0, 0, 0.15, 3.0, 1.9, 0.7, 0.22, 0, 0, 0);
+          this.emit(s.last.x + (x - s.last.x) * f, s.last.y + (y - s.last.y) * f, s.last.z + (z - s.last.z) * f, 0, 0, 0, 0.15 * near, 3.0, 1.9, 0.7, 0.22, 0, 0, 0);
         }
         this.emit(x, y, z, 0, 0, 0, 0.5, 4.2, 3.4, 2.0, 0.05, 0, 0, 0);
       }
