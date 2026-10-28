@@ -237,14 +237,22 @@ async function boot() {
   makeCrackers(); makeTokens(triImg, pmrem.fromEquirectangular(T.makeStudioEnv()).texture); makeSkyLanterns();
   fx = new FX(scene); fx.setScale(canvas.clientHeight * renderer.getPixelRatio(), camera.fov);
   triangle = new TotalTriangle(scene, SKY_TRI, brandTex, wordWhite);
-  // the city on the far horizon, either side of the open ground under the triangle (the middle stays clear
-  // for its tip and the wordmark); hidden by the gali until the player comes out into the chowk
+  // The city on the far horizon, either side of the open ground under the triangle (the middle stays clear for
+  // its tip and the wordmark); hidden by the gali until the player comes out into the chowk. The towers stand
+  // on the city's own ground, a band of haze and street lights that runs from the land line down to 35 m below
+  // it, and a band of the same runs across the middle: the street's ground ends about 150 m out, so its far
+  // edge always overlaps that band and the towers never float over a strip of sky.
   const skyTex = T.makeSkyline(); skyTex.repeat.set(2, 1);
-  const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, color: new THREE.Color(0.8, 0.78, 0.85), transparent: true, fog: false, depthWrite: false, side: THREE.BackSide });
+  const cityCol = new THREE.Color(0.8, 0.78, 0.85), CZ = -(COURSE_END + 40);
+  const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, color: cityCol, transparent: true, fog: false, depthWrite: false, side: THREE.BackSide });
   for (const [a0, a1] of [[0.14, 1.25], [-1.25, -0.14]]) {
-    const city = new THREE.Mesh(new THREE.CylinderGeometry(560, 560, 64, 24, 1, true, Math.PI + a0, a1 - a0), skyMat);
-    city.position.set(0, 29, -(COURSE_END + 40)); city.renderOrder = -8; city.layers.enable(REFL); scene.add(city);
+    const city = new THREE.Mesh(new THREE.CylinderGeometry(560, 560, 96, 24, 1, true, Math.PI + a0, a1 - a0), skyMat);
+    city.position.set(0, 13, CZ); city.renderOrder = -8; city.layers.enable(REFL); scene.add(city);
   }
+  { const landTex = T.makeLandBand(); landTex.repeat.set(0.4, 1);
+    const land = new THREE.Mesh(new THREE.CylinderGeometry(560, 560, 39, 6, 1, true, Math.PI - 0.15, 0.3),
+      new THREE.MeshBasicMaterial({ map: landTex, color: cityCol, transparent: true, fog: false, depthWrite: false, side: THREE.BackSide }));
+    land.position.set(0, -15.5, CZ); land.renderOrder = -8; land.layers.enable(REFL); scene.add(land); }
   player = new Player(scene, brandTex, envMap);
   // the light sources, which the reflection camera sees as well
   for (const o of [street.bulbs, street.lanterns, street.jhalar.mesh, flames.mesh, washes.mesh, triangle.group, triangle.flash, player.root, tokenMesh]) o.traverse(c => c.layers.enable(REFL));

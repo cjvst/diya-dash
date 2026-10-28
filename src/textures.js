@@ -432,9 +432,32 @@ export function makePoolTexture() {
 /* ---------------- the city beyond the chowk: rooftops, a temple, lit windows and rooftop lights ---------------- */
 // A strip wrapped round the far horizon. Dark silhouettes against the night haze, so the sky triangle hangs
 // over a whole city celebrating, not an empty plain.
+// The towers fill the top 256 rows; below them (LAND rows) the city's own ground: haze and street lights
+// running down past the land line, so the near street's far edge always covers the foot of it. Without it the
+// street's ground ended before the city began and the towers floated over a strip of sky.
+const LAND = 128;
+function landBand(c, x0, y0, W, h, r, topFade) {
+  const g = c.createLinearGradient(0, y0, 0, y0 + h);
+  if (topFade) { g.addColorStop(0, 'rgba(64,42,56,0)'); g.addColorStop(0.16, 'rgba(66,43,57,.9)'); }
+  else g.addColorStop(0, 'rgba(66,43,57,.92)');
+  g.addColorStop(0.42, '#1c1532'); g.addColorStop(1, '#141030');
+  c.fillStyle = g; c.fillRect(x0, y0, W, h);
+  // street lights, thick near the land line and thinning out below it
+  for (let k = 0; k < W * 0.32; k++) {
+    const t = r() * r();
+    c.fillStyle = pick(r, ['#ffd08a', '#ffb85a', '#ffe8c0', '#ff9a40', '#bfe0ff']); c.globalAlpha = (0.3 + r() * 0.7) * (1 - t * 0.7);
+    c.fillRect(x0 + r() * W, y0 + h * (topFade ? 0.12 : 0.02) + t * h * 0.5, 1.2 + r() * 0.8, 1.2);
+  }
+  c.globalAlpha = 1;
+}
+export function makeLandBand() {
+  const W = 1024, H = 160, c0 = mk(W, H), c = c0.getContext('2d');
+  landBand(c, 0, 0, W, H, mulberry32(47), true);
+  const t = tex(c0, { repeat: true }); t.wrapT = THREE.ClampToEdgeWrapping; return t;
+}
 export function makeSkyline() {
-  const W = 2048, H = 256, c0 = mk(W, H), c = c0.getContext('2d'), r = mulberry32(31);
-  c.clearRect(0, 0, W, H);
+  const W = 2048, H = 256, c0 = mk(W, H + LAND), c = c0.getContext('2d'), r = mulberry32(31);
+  c.clearRect(0, 0, W, H + LAND);
   const lights = [];
   let x = 0;
   while (x < W) {
@@ -470,6 +493,7 @@ export function makeSkyline() {
   c.fillStyle = band; c.fillRect(0, H - 36, W, 36);
   for (let k = 0; k < 520; k++) { c.fillStyle = pick(r, ['#ffd08a', '#ffb85a', '#ffe8c0', '#ff9a40', '#bfe0ff']); c.globalAlpha = 0.35 + r() * 0.65; c.fillRect(r() * W, H - 18 - r() * 12, 1.5 + r(), 1.5); }
   c.globalAlpha = 1;
+  landBand(c, 0, H, W, LAND, r, false);
   const t = tex(c0, { repeat: true }); t.wrapT = THREE.ClampToEdgeWrapping; return t;
 }
 
