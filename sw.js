@@ -1,9 +1,9 @@
 // Offline support for promoters on patchy networks.
 // Code and page: network first, falling back to the saved copy. Images, sound, the 3D engine and fonts: saved copy first.
-const VERSION = 'diya-dash-v5';
+const VERSION = 'diya-dash-v6';
 const CORE = [
   './', 'index.html', 'manifest.webmanifest',
-  'src/main.js', 'src/rules.js', 'src/textures.js', 'src/world.js', 'src/diyas.js', 'src/fx.js', 'src/triangle.js', 'src/player.js', 'src/audio.js', 'src/i18n.js',
+  'src/main.js', 'src/rules.js', 'src/textures.js', 'src/world.js', 'src/diyas.js', 'src/fx.js', 'src/triangle.js', 'src/player.js', 'src/audio.js', 'src/i18n.js', 'src/stall.js',
   'vendor/three/three.module.min.js',
   'vendor/three/addons/postprocessing/EffectComposer.js', 'vendor/three/addons/postprocessing/RenderPass.js', 'vendor/three/addons/postprocessing/ShaderPass.js',
   'vendor/three/addons/postprocessing/MaskPass.js', 'vendor/three/addons/postprocessing/Pass.js', 'vendor/three/addons/postprocessing/UnrealBloomPass.js',

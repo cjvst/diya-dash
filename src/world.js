@@ -54,7 +54,7 @@ class GB {
 function buildSide(side, act, seed, atlas) {
   const r = mulberry32(seed);
   const fp = new GB(WHITE_UV), brd = new GB([0, 0]);
-  const decor = { beads: [], lanterns: [], diyas: [], rangolis: [], lamps: [], jhalars: [] };
+  const decor = { beads: [], lanterns: [], diyas: [], rangolis: [], lamps: [], jhalars: [], people: [] };
   // the jhalar draw from their own random stream, so adding them leaves the street's layout as it was
   const rj = mulberry32(seed + 7777);
   const jhalar = (x, y, z, w, len, roof) => {
@@ -116,6 +116,15 @@ function buildSide(side, act, seed, atlas) {
     // rice lights along the roofline, and curtains of them hanging down the top floor
     if (rj() < 0.8) jhalar(X + inward * 0.15, h + 0.78, zc, w - 0.3, 0.2, 1);
     if (rj() < (act === 0 ? 0.4 : 0.55)) jhalar(X + inward * 0.16, h + 0.7, zc, w - 0.7, 1.3 + rj() * 1.5, 0);
+    // people: customers and shopkeepers against the lit shops, families at their doors, children with sparklers
+    const person = (dx, dz, kinds) => decor.people.push({ x: X + inward * dx, z: zc + dz, kind: kinds[(rj() * kinds.length) | 0], s: 0.94 + rj() * 0.12, ph: rj() * 6.28, flip: rj() < 0.5 ? -1 : 1 });
+    // (shop people stand just inside the threshold, behind the platform's diyas; door people on the step;
+    // children out in front, clear of the rangoli)
+    if (cell.shop) { const n = act === 0 ? 1 : 1 + (rj() < 0.5 ? 1 : 0); for (let k = 0; k < n; k++) person(0.3 + rj() * 0.1, (rj() - 0.5) * w * 0.55, [0, 1, 2, 3, 7]); }
+    else {
+      if (rj() < 0.45) person(0.28, (rj() - 0.5) * 1.4, [0, 1, 3, 4, 7]);
+      if (rj() < (act === 0 ? 0.3 : 0.2)) { const k = rj() < 0.65 ? 6 : 5; decor.people.push({ x: X + inward * 1.05, z: zc + (rj() < 0.5 ? -1 : 1) * (0.9 + rj() * 0.6), kind: k, s: 0.95 + rj() * 0.1, ph: rj() * 6.28, flip: 1 }); }
+    }
     if (cell.shop) {
       const sw = 5.04 * frac, sz0 = zc + sw / 2, sz1 = zc - sw / 2;
       decor.lamps.push({ side, z: zc, w: sw, shop: true, thr: 0 });     // the shop's light spills onto the street
@@ -203,7 +212,7 @@ const JHALAR_THEMES = [
   ['#ffd39a', '#fff0c8', 0], ['#ffc44d', '#ff9a2e', 0], ['#ffd39a', '#ffc44d', 1],
   ['#ff3d7f', '#3fc8ff', 1], ['#ff4b2b', '#3ad06b', 0], ['#b45bff', '#ffd23f', 1],
 ].map(([a, b, run]) => ({ a: col(a), b: col(b), run }));
-const BEADS_PER_SLOT = 560, BULBS_PER_SLOT = 150, LANTERNS_PER_SLOT = 10, RANGOLI_PER_SLOT = 8, WIRES_PER_SLOT = 260, JHALARS_PER_SLOT = 18;
+const BEADS_PER_SLOT = 560, BULBS_PER_SLOT = 150, LANTERNS_PER_SLOT = 10, RANGOLI_PER_SLOT = 8, WIRES_PER_SLOT = 260, JHALARS_PER_SLOT = 18, PEOPLE_PER_SLOT = 16;
 // Lamps that light the house fronts per pixel: the nearest SL_N shop lights, door lamps and curtain lights.
 // Further down the street the rest become soft washes on their own wall, cross-faded so none pops on.
 const SL_N = 16;
@@ -274,8 +283,10 @@ export class Street {
     this.lanterns.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(LANTERNS_PER_SLOT * SLOTS * 3), 3).setUsage(THREE.DynamicDrawUsage);
     this.rangoli = makeRangoliMesh(tex.rangoli, RANGOLI_PER_SLOT * SLOTS, this.glow);
     this.jhalar = makeJhalarMesh(tex.bulb, JHALARS_PER_SLOT * SLOTS, this.glow);
+    this.people = makePeopleMesh(tex.people, PEOPLE_PER_SLOT * SLOTS, this.glow);
+    this.onSparkle = null;                            // (x, y, z, i): a child's sparkler, drawn by the game's sparks
     for (const m of [this.beads, this.bulbs, this.lanterns]) { m.frustumCulled = false; scene.add(m); }
-    scene.add(this.rangoli.mesh, this.jhalar.mesh);
+    scene.add(this.rangoli.mesh, this.jhalar.mesh, this.people.mesh);
     this.bulbMeta = new Float32Array(BULBS_PER_SLOT * SLOTS * 4).fill(-1);
     this.bulbPhase = new Float32Array(BULBS_PER_SLOT * SLOTS);
     this.lanternMeta = new Float32Array(LANTERNS_PER_SLOT * SLOTS * 4).fill(-1);
@@ -312,7 +323,17 @@ export class Street {
       lc[i * 3] = this.lanternMeta[m] * k; lc[i * 3 + 1] = this.lanternMeta[m + 1] * k; lc[i * 3 + 2] = this.lanternMeta[m + 2] * k;
     }
     this.lanterns.instanceColor.needsUpdate = true;
-    this.jhalar.mat.uniforms.uTime.value = time;
+    this.jhalar.mat.uniforms.uTime.value = time; this.people.mat.uniforms.uTime.value = time;
+    // children's sparklers, waved in little circles, near enough to see
+    if (this.onSparkle) for (const sl of this.slots) {
+      if (sl.k === -999 || !sl.sparklers) continue;
+      for (const k of sl.sparklers) {
+        const d = -k.z - s; if (d < -4 || d > 38) continue;
+        const a = time * 7 + k.ph;
+        this.onSparkle(k.x + Math.cos(a) * 0.09, k.y + Math.sin(a) * 0.12, k.z, k);
+        pools.push(k.x, 0.011, k.z, 1.8, 0.3, 0.26, 0.18);
+      }
+    }
     // the light the street's own sources throw: on the stones as pools, on the house fronts as real lamps
     const dt = Math.min(0.1, Math.max(0, time - this._t)); this._t = time;
     const on01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -459,6 +480,16 @@ export class Street {
         }
       }
     }
+    // this slot's people (children with sparklers remembered, so update() can light them)
+    let Pp = idx * PEOPLE_PER_SLOT; const PEnd = Pp + PEOPLE_PER_SLOT;
+    sl.sparklers = [];
+    for (const { v, open } of decs) for (const p of v.decor.people) {
+      if (Pp >= PEnd) break;
+      this.people.set(Pp++, p.x + open, p.z - s0, p.s, p.flip, p.kind, p.ph);
+      if (p.kind === 6) sl.sparklers.push({ x: p.x + open + 0.36 * p.s, y: 0.85 * p.s, z: p.z - s0, ph: p.ph });
+    }
+    for (; Pp < PEnd; Pp++) this.people.hide(Pp);
+    this.people.flush();
     // this slot's jhalar
     let J = idx * JHALARS_PER_SLOT; const JEnd = J + JHALARS_PER_SLOT;
     for (const { v, open } of decs) for (const j of v.decor.jhalars) { if (J >= JEnd) break; this.jhalar.set(J++, j.x + open, j.y, j.z - s0, j.w, j.len, j.thr, j.seed, j.th, j.roof); }
@@ -557,6 +588,46 @@ function makeJhalarMesh(bulbTex, cap, glow) {
     },
     hide(i) { A.set([0, -50, 0, 0], i * 4); B[i * 4 + 1] = 99; },
     flush() { for (const a of attrs) a.needsUpdate = true; },
+  };
+}
+
+// People: upright cut-outs from an 8-figure silhouette atlas, always turned to face the camera, swaying a
+// little as people do. Back-lit dark figures, their rim brighter as the street lights up; fogged like the rest.
+function makePeopleMesh(atlas, cap, glow) {
+  const plane = new THREE.PlaneGeometry(1, 1); plane.translate(0, 0.5, 0);
+  const g = new THREE.InstancedBufferGeometry();
+  g.index = plane.index; g.setAttribute('position', plane.attributes.position); g.setAttribute('uv', plane.attributes.uv);
+  const A = new Float32Array(cap * 4), B = new Float32Array(cap * 2);
+  const aA = new THREE.InstancedBufferAttribute(A, 4), aB = new THREE.InstancedBufferAttribute(B, 2);
+  g.setAttribute('aA', aA); g.setAttribute('aB', aB); g.instanceCount = cap;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTex: { value: atlas }, uGlow: glow, uTime: { value: 0 }, uFog: { value: 0.0135 }, uFogCol: { value: new THREE.Color() } },
+    vertexShader: /* glsl */`
+      attribute vec4 aA; attribute vec2 aB;            // x, z, scale, mirror | figure, sway phase
+      uniform float uTime, uFog; varying vec2 vUv; varying float vF;
+      void main() {
+        vec2 to = cameraPosition.xz - aA.xy; vec2 right = normalize(vec2(to.y, -to.x));
+        float H = 1.7 * aA.z, W = 0.85 * aA.z;
+        float sway = sin(uTime * 1.3 + aB.y) * 0.03 * position.y;
+        vec3 p = vec3(aA.x, 0.0, aA.y) + vec3(right.x, 0.0, right.y) * (position.x * W + sway) + vec3(0.0, position.y * H, 0.0);
+        vec4 mv = viewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
+        vUv = vec2(((aA.w < 0.0 ? 1.0 - uv.x : uv.x) + aB.x) / 8.0, uv.y);
+        float d = -mv.z; vF = exp(-uFog * uFog * d * d);
+      }`,
+    fragmentShader: /* glsl */`
+      uniform sampler2D uTex; uniform float uGlow; uniform vec3 uFogCol; varying vec2 vUv; varying float vF;
+      void main() {
+        vec4 t = texture2D(uTex, vUv); if (t.a < 0.5) discard;
+        gl_FragColor = vec4(mix(uFogCol, t.rgb * (0.75 + 0.5 * uGlow), vF), 1.0);
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(g, mat); mesh.frustumCulled = false;
+  return {
+    mesh, mat,
+    set(i, x, z, s, flip, kind, ph) { A.set([x, z, s, flip], i * 4); B.set([kind, ph], i * 2); },
+    hide(i) { A.set([0, 9999, 0, 1], i * 4); },
+    flush() { aA.needsUpdate = true; aB.needsUpdate = true; },
   };
 }
 

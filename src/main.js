@@ -14,13 +14,17 @@ import { TotalTriangle, PANELS } from './triangle.js';
 import { Player } from './player.js';
 import { Sound } from './audio.js';
 import { S } from './i18n.js';
+import { stall, clockText, TIER_KEYS } from './stall.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const ease = t => t * t * (3 - 2 * t);
 const params = new URLSearchParams(location.search);
-const DEBUG = params.has('debug'), AUTOPLAY = params.has('autoplay');
+// Test hooks and the demo bot work only on the developer's own machine: on the live link ?autoplay would
+// let a bot win a prize and ?debug would let anyone fast-forward a run.
+const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+const DEBUG = LOCAL && params.has('debug'), AUTOPLAY = LOCAL && params.has('autoplay');
 
 /* ---------------- quality: start high, step down if the phone struggles ---------------- */
 const QUALITY = [
@@ -60,7 +64,7 @@ const camera = new THREE.PerspectiveCamera(64, 1, 0.3, 2400);
 const SKY_TRI = { z: -(COURSE_END + 1220), width: 610, apexY: 126 };
 let composer, bloomPass, gradePass;
 function buildComposer() {
-  const q = QUALITY[qi], W = canvas.clientWidth, H = canvas.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, q.dpr);
+  const q = QUALITY[qi], W = canvas.clientWidth, H = canvas.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, resting ? 1 : q.dpr);
   renderer.setPixelRatio(dpr); renderer.setSize(W, H, false);
   if (composer) composer.dispose();
   const rt = new THREE.WebGLRenderTarget(W * dpr, H * dpr, { type: THREE.HalfFloatType, samples: q.msaa });
@@ -180,7 +184,7 @@ async function boot() {
   await frameYield();
   const tex = {
     paving: T.makePaving(aniso), facade: T.makeFacadeAtlas(aniso), boards: T.makeBoardAtlas(wordImg, triImg, aniso),
-    rangoli: T.makeRangoliAtlas(aniso), pool: T.makePoolTexture(), diya: T.makeDiyaTextures(), bulb: T.makeBulbTile(),
+    rangoli: T.makeRangoliAtlas(aniso), pool: T.makePoolTexture(), diya: T.makeDiyaTextures(), bulb: T.makeBulbTile(), people: T.makePeopleAtlas(),
   };
   progress(0.45); await frameYield();
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -192,7 +196,7 @@ async function boot() {
   decorDiyas = new DiyaSet(230, tex.diya, brass, { seg: 14 });
   scene.add(gameDiyas.group, decorDiyas.group, flames.mesh, pools.mesh, washes.mesh, rings.mesh);
   rings.mat.uniforms.uFogCol.value.copy(FOG);
-  makeCrackers();
+  makeCrackers(); makeTokens(brandTex);
   fx = new FX(scene); fx.setScale(canvas.clientHeight * renderer.getPixelRatio(), camera.fov);
   triangle = new TotalTriangle(scene, SKY_TRI, brandTex, wordWhite);
   // the city on the far horizon, either side of the open ground under the triangle (the middle stays clear
@@ -204,7 +208,12 @@ async function boot() {
     city.position.set(0, 29, -(COURSE_END + 40)); city.renderOrder = -8; scene.add(city);
   }
   player = new Player(scene, brandTex, envMap);
-  street.rangoli.mat.uniforms.uFogCol.value.copy(FOG);
+  street.rangoli.mat.uniforms.uFogCol.value.copy(FOG); street.people.mat.uniforms.uFogCol.value.copy(FOG);
+  // a child's sparkler: a fizz of tiny white-gold sparks and a hot point of light
+  street.onSparkle = (x, y, z) => {
+    for (let k = 0; k < 3; k++) { const a = Math.random() * 6.283, sp = 1 + Math.random() * 2.2; fx.emit(x, y, z, Math.cos(a) * sp, Math.sin(a) * sp * 0.8 + 0.4, (Math.random() - 0.5) * sp, 0.035 + Math.random() * 0.03, 3.8, 3.4, 2.6, 0.18 + Math.random() * 0.15, 3, -3, 1); }
+    flames.push(x, y, z, 0.05, 1, 2.5);
+  };
   progress(0.6);
   // sound: whatever CC0 files are present, as listed in CREDITS.json and tuned in mix.json
   let credits = [], mix = {};
@@ -213,7 +222,15 @@ async function boot() {
   const manifest = {};
   for (const c of credits) { const name = c.file.replace(/\.[a-z0-9]+$/i, ''); manifest[name] = { url: `assets/audio/${c.file}`, ...(mix[name] || {}) }; }
   sound = new Sound(manifest);
-  await sound.load(v => progress(0.6 + v * 0.38));
+  // The short sounds first, then the start screen; the long beds (music, crowd, crackers, cheer: over half the
+  // audio) load behind it. On a weak signal the first open is about twice as quick. A run started before they
+  // arrive plays with the beat and effects, and picks the beds up as soon as they land.
+  const LATER = ['music_track', 'ambience', 'music_tabla', 'crackers', 'cheer'];
+  await sound.load(v => progress(0.6 + v * 0.38), Object.keys(manifest).filter(n => !LATER.includes(n)));
+  sound.load(null, LATER).then(() => {
+    if (mode === 'attract') sound.landing();
+    else if (mode === 'play' && sound.running && !sound.loops.music_track) { sound.loop('music_track', { gain: 0.85, at: sound.nextBar(), fade: 0.3, bus: sound.pump }); if (lastAct >= 1) sound.act(lastAct); }
+  });
   fx.onBurst = (pos, big) => { const d = pos.distanceTo(camera.position); sound.atDistance(['firework_1', 'firework_2', 'firework_3'][(Math.random() * 3) | 0], d, clamp(pos.x / 20, -1, 1), 1.1 * big, 0.92 + Math.random() * 0.16); };
   street.onIgnite = (x, y, z) => fx.sparks(x, y + 0.1, z, 5, 1.3);
   // the triangle is far off in the sky, but its bell should ring as if it were just over the rooftops
@@ -242,6 +259,8 @@ function toAttract(first) {
   glowTarget = 0.5; if (first) glow = 0.5; slotNext = 0; camS = -4;
   triangle.reset(); fx.clear();
   $('hud').classList.remove('on'); $('result').classList.remove('on', 'reveal');
+  // a score to beat, for the queue watching at the stall
+  const best = stall.best(); $('best').textContent = best > 0 ? S.best(best) : '';
   show('landing');
   if (sound) sound.landing();
 }
@@ -339,20 +358,38 @@ let flashT = -1, shakeT = -1, glitterUntil = 0;
 function showResult() {
   finale.shown = true; mode = 'result'; modeT = 0;
   $('hud').classList.remove('on');
-  const ti = tierFor(run.score), tier = CONFIG.TIERS[ti], win = !!tier.key;
+  // the prize the score earns, moved down a step if today's limit for it has run out (promoter tools)
+  const earned = tierFor(run.score), ti = stall.award(earned, CONFIG.TIERS), tier = CONFIG.TIERS[ti], win = !!tier.key;
+  const prevBest = stall.best();
+  result = stall.record(run.score, tier.key, CONFIG.TIERS[earned].key);
   $('resNum').textContent = '0';
   $('pKick').textContent = win ? S.win : '';           // the card already says Happy Diwali
   $('pTitle').textContent = win ? S.prizes[tier.key] : S.none;
   $('pLine').textContent = win ? (triangle.litCount() >= PANELS ? S.full : '') : S.noneLine;
   $('collect').textContent = win ? S.collect : '';
+  $('vStall').textContent = stall.code ? S.stallLabel(stall.code) : ''; $('vCode').textContent = result.code; tickVerify();
+  $('stamp').className = 'stamp'; $('stamp').parentElement.classList.remove('given'); const given = $('btnGiven'); given.disabled = false; given.textContent = S.given;
+  $('newBest').classList.remove('on');
   $('result').classList.toggle('lose', !win);
   $('result').classList.add('on');
-  count = { t: -0.2, dur: Math.min(2.2, 0.7 + run.score * 0.022), shown: 0, done: false, win, big: ti === 0 };
-  const detail = { triangles: run.score, diyas: run.lit, tier: ti, prize: tier.key };
+  count = { t: -0.2, dur: Math.min(2.2, 0.7 + run.score * 0.022), shown: 0, done: false, win, big: ti === 0, best: run.score > prevBest && prevBest > 0 };
+  const detail = { triangles: run.score, diyas: run.lit, tier: ti, prize: tier.key, earned: CONFIG.TIERS[earned].key, code: result.code, stall: stall.code };
   try { if (window.parent !== window) window.parent.postMessage({ type: 'diyadash:result', ...detail }, '*'); } catch (e) { /* not embedded */ }
   window.dispatchEvent(new CustomEvent('diyadash:result', { detail }));
 }
-let count = null;
+let count = null, result = null;
+// the result screen's clock ticks every second: a screenshot shown again later is plainly out of date
+function tickVerify() {
+  const d = new Date();
+  $('vTime').textContent = `${d.getDate()} ${d.toLocaleString('en-IN', { month: 'short' })} · ${clockText(d)}`;
+}
+$('btnGiven').addEventListener('click', () => {
+  if (!result) return;
+  const r = stall.markGiven(result.id); if (!r || !r.given) return;
+  const st = $('stamp'); st.innerHTML = S.stamp(r.given); st.classList.add('on'); st.parentElement.classList.add('given');
+  const b = $('btnGiven'); b.disabled = true; b.textContent = S.givenDone;
+  sound.play('ui_tap', { gain: 0.7 }); buzz([12, 40, 24]);
+});
 
 /* ---------------- run events ---------------- */
 // Haptics, in one place: a vocabulary the hand learns. Catches tick harder as the streak grows; a near miss
@@ -451,7 +488,7 @@ const camAt = v => { const k = clamp((v - 9) / 10, 0, 1); return { back: CAM.bac
 // The finale: a 3.4 s glide that leaves the gali at about 1.7 s and ends ~36 m on, in the chowk; the gem
 // rises a little as it comes out, and the camera settles low behind it, looking up the line of the street
 // with a slightly narrower lens, so the whole sky triangle fills the top of the screen above the result panel.
-const FIN = { glide: 3.4, crane: 1.2, lift: 1.3, back: 8.5, camY: 3.2, pitch: -4.5, fov: 62, impactLead: 3.0, flight: 1.0, chase: 85, resultAfter: 1.7 };
+const FIN = { glide: 3.4, crane: 1.2, lift: 1.3, back: 8.5, camY: 3.2, pitch: -6.5, fov: 62, impactLead: 3.0, flight: 1.0, chase: 85, resultAfter: 1.7 };
 let drag = null;
 const inGame = () => (mode === 'play' || mode === 'countdown') && !paused;
 function metersPerPx() {
@@ -483,7 +520,36 @@ let wake = null;
 async function requestWake() { try { if ('wakeLock' in navigator && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) { /* not allowed */ } }
 function tryFullscreen() { const el = document.documentElement; if (document.fullscreenElement || !el.requestFullscreen || !matchMedia('(pointer: coarse)').matches) return; el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {}); }
 
-$('btnGo').addEventListener('click', () => { if (mode === 'attract') startCountdown(); });
+$('btnGo').addEventListener('click', () => { if (mode === 'attract' && !promoOpen) startCountdown(); });
+
+/* ---------------- promoter tools: a long press on the TOTAL logo of the start screen ---------------- */
+let promoOpen = false, pressT = 0;
+const logo = document.querySelector('#landing .lockup');
+logo.addEventListener('pointerdown', () => { clearTimeout(pressT); pressT = setTimeout(() => { if (mode === 'attract') openPromo(); }, 1200); });
+for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) logo.addEventListener(ev, () => clearTimeout(pressT));
+logo.addEventListener('contextmenu', e => e.preventDefault());
+function openPromo() {
+  promoOpen = true; buzz([20, 40, 20]);
+  const s = stall.stats(), P = S.pStats, d = new Date();
+  $('pDate').textContent = `${d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}${stall.code ? ' · ' + S.stallLabel(stall.code) : ''}`;
+  const cell = (n, label) => `<div><b>${n}</b><span>${label}</span></div>`;
+  $('pStats').innerHTML = cell(s.plays, P.plays) + cell(s.best, P.best) + cell(s.avg, P.avg) + cell(s.by.none, P.none)
+    + TIER_KEYS.map(k => cell(`${s.by[k]}<small style="font-size:13px;font-weight:600;color:var(--muted)"> · ${s.given[k]} ${P.given}</small>`, S.prizes[k])).join('')
+    + (s.capped ? cell(s.capped, P.capped) : '');
+  $('pCode').value = stall.code;
+  $('pCaps').innerHTML = TIER_KEYS.map(k => `<label>${S.pCapLabels[k]}<input inputmode="numeric" data-cap="${k}" value="${stall.cap(k) ?? ''}" placeholder="—"></label>`).join('');
+  show('promo');
+}
+$('pCode').addEventListener('change', e => stall.setCode(e.target.value));
+$('pCaps').addEventListener('change', e => { if (e.target.dataset.cap) stall.setCap(e.target.dataset.cap, e.target.value); });
+$('pClose').addEventListener('click', () => { stall.setCode($('pCode').value); promoOpen = false; modeT = 0; toAttract(false); });
+$('pReset').addEventListener('click', () => { if (confirm(S.pResetAsk)) { stall.resetToday(); openPromo(); } });
+$('pExport').addEventListener('click', async () => {
+  // all kept days as a CSV: shared straight to WhatsApp or mail where the phone allows it, else downloaded
+  const name = `diya-dash-${stall.code || 'stall'}-${new Date().toISOString().slice(0, 10)}.csv`, blob = new Blob([stall.csv()], { type: 'text/csv' });
+  try { const file = new File([blob], name, { type: 'text/csv' }); if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; } } catch (e) { /* fall back to a download */ }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
 $('btnNext').addEventListener('click', () => { sound.play('ui_tap', { gain: 0.6 }); buzz(10); fadeTo(() => toAttract(false)); });
 $('btnResume').addEventListener('click', () => { paused = false; sound.unlock(); show(null); last = performance.now(); });
 const muteBtn = $('mute');
@@ -502,8 +568,19 @@ let last = performance.now(), clock = 0;
 const prof = { u: 0, r: 0 };
 const lookAt = new THREE.Vector3();
 const frameLog = new Float32Array(240); let fi = 0, fcount = 0, qCheckT = 0;
+// Resting between players: after 15 s untouched on the start screen (or the promoter tools), and once a
+// prize is on screen, the phone draws at half the frame rate and lower resolution. Over a long shift that
+// keeps it cool and saves battery; any touch, or the next game, wakes it at once.
+let resting = false, restSkip = 0;
+function restWanted() {
+  return (mode === 'attract' && (modeT > 15 || promoOpen)) || (mode === 'result' && count && count.done && modeT > 7);
+}
+addEventListener('pointerdown', () => { if (mode === 'attract') modeT = 0; if (mode === 'result') modeT = Math.min(modeT, 6); }, true);
 function loop(now) {
   requestAnimationFrame(loop);
+  const want = restWanted();
+  if (want !== resting) { resting = want; buildComposer(); resetFrames(); }
+  if (resting && (++restSkip & 1)) return;           // every other frame; the next one carries the time
   const raw = now - last; last = now;
   frameLog[fi] = raw; fi = (fi + 1) % frameLog.length; fcount++;
   const dt = Math.min(raw / 1000, 1 / 20);
@@ -528,7 +605,7 @@ let slowChecks = 0, fastChecks = 0, steppedDown = false;
 const resetFrames = () => { fcount = 0; fi = 0; slowChecks = 0; fastChecks = 0; };
 function adaptQuality(dt) {
   // never mid-moment: a change rebuilds the renderer (a visible hitch), so not in the countdown, finale or result
-  if (params.get('q') || document.hidden || !(mode === 'attract' || mode === 'play')) return;
+  if (params.get('q') || document.hidden || resting || !(mode === 'attract' || mode === 'play')) return;
   qCheckT += dt;
   if (qCheckT < 1.5 || fcount < 90) return;
   qCheckT = 0;
@@ -593,6 +670,7 @@ function update(dt) {
     if (!finale.shown && finale.struck && modeT > finale.strikeAt + FIN.resultAfter) showResult();
   } else if (mode === 'result' && count) {
     count.t += dt;
+    if (Math.floor(modeT) !== Math.floor(modeT - dt)) tickVerify();
     if (!count.done) {
       const k = clamp(count.t / count.dur, 0, 1), v = Math.floor(ease(k) * run.score + 1e-6);
       if (v > count.shown) { count.shown = v; $('resNum').textContent = v; if (v % 2 === 0) sound.play('ui_tick', { gain: 0.35, rate: 1 + Math.min(v, 60) * 0.012 }); }
@@ -601,6 +679,7 @@ function update(dt) {
         count.done = true; const el = $('resNum'); el.textContent = run.score;
         el.classList.remove('slam'); void el.offsetWidth; el.classList.add('slam');
         sound.play('music_hit_dholak_bass', { gain: 1.2 }); sound.play('ignite_b', { gain: 0.7 }); buzz(30);
+        if (count.best) { $('newBest').classList.add('on'); sound.play('bell_b', { gain: 0.7, rate: 1.5, delay: 0.12 }); }
         after(0.35, revealPrize);
       }
     }
@@ -679,13 +758,14 @@ function revealPrize() {
 // Gameplay diyas: on their stands ahead of the player, each on a marigold ring so it reads in any light.
 // Ring states: waiting (soft pulse), lined up with the flame (bright and larger), lit (gold), missed (dim).
 function drawCourse(ps) {
-  const c = run.course; let lights = 0;
+  const c = run.course; let lights = 0, tokens = 0;
   for (const l of diyaLights) l.intensity = 0;
   for (let i = Math.max(0, run.next - 8); i < c.length; i++) {
     const d = c[i], ahead = d.s - ps;
     if (ahead > 72) break;
     if (ahead < -9) continue;
     const z = -d.s, scale = d.gold ? 2.35 : 2.1, pulse = 0.5 + 0.5 * Math.sin(clock * 7 + d.i);
+    if (d.gold && !d.missed) tokens = drawToken(d, z, tokens);
     gameDiyas.add(d.x, 0, z, -1.2 + ((d.i * 0.618) % 1) * 0.6, scale, d.i % 3, d.gold, wick, true);
     const ringSize = d.gold ? 1.95 : 1.6;
     if (d.lit) {
@@ -710,6 +790,26 @@ function drawCourse(ps) {
       if (d.gold && !d.missed) pools.push(d.x, 0.012, z, 2.4, 0.3 + 0.12 * pulse, 0.2, 0.04);
     }
   }
+  tokenMesh.count = tokens; tokenMesh.instanceMatrix.needsUpdate = true;
+}
+
+// The brand in the thing players chase hardest: every golden diya carries the official TOTAL triangle, floating
+// and glowing above its flame, turning gently towards the camera (never past side-on, so the mark is never seen
+// mirrored). Caught, it pops up and vanishes into its streak.
+let tokenMesh;
+const tkM = new THREE.Matrix4(), tkQ = new THREE.Quaternion(), tkS = new THREE.Vector3(), tkP = new THREE.Vector3(), tkE = new THREE.Euler();
+function makeTokens(brandTex) {
+  const W = 0.62, g = new THREE.PlaneGeometry(W, (W * 123) / 208);
+  const m = new THREE.MeshBasicMaterial({ map: brandTex, color: new THREE.Color(1.35, 1.35, 1.35), transparent: true, alphaTest: 0.4, side: THREE.DoubleSide, fog: false });
+  tokenMesh = new THREE.InstancedMesh(g, m, 12); tokenMesh.frustumCulled = false; tokenMesh.count = 0; tokenMesh.renderOrder = 3; scene.add(tokenMesh);
+}
+function drawToken(d, z, n) {
+  const t = d.lit ? clock - d.litAt : -1;
+  if (t > 0.3 || n >= 12) return n;
+  const pop = t < 0 ? 0 : t / 0.3, s = t < 0 ? 1 : 1 + pop * 0.8, a = Math.sin(clock * 1.6 + d.i) * 0.45;
+  tkM.compose(tkP.set(d.x, 1.75 + Math.sin(clock * 2.4 + d.i) * 0.06 + pop * 1.2, z), tkQ.setFromEuler(tkE.set(0, a, 0)), tkS.set(s, s * (1 - pop), s));
+  tokenMesh.setMatrixAt(n, tkM);
+  return n + 1;
 }
 
 // Firecrackers on the road. An anaar is a clay cone spraying a fountain of white-gold sparks; a chakri is a

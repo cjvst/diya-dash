@@ -137,8 +137,8 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 
 /* result: the 3D triangle stays clear in the top of the screen; everything to read sits on a solid panel below */
 #result { justify-content: flex-end; padding: 0; }
-.res-panel { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px;
-  padding: 18px max(18px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 20px) max(18px, env(safe-area-inset-left, 0px));
+.res-panel { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 14px max(18px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 16px) max(18px, env(safe-area-inset-left, 0px));
   border-radius: 28px 28px 0 0; border-top: 1px solid rgba(255, 207, 90, .4);
   background: linear-gradient(180deg, rgba(14, 10, 30, .9) 0%, rgba(8, 6, 18, .97) 40%, #07060f 100%);
   box-shadow: 0 -18px 50px rgba(0, 0, 0, .55);
@@ -164,9 +164,60 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 .card .kick:empty { display: none; }
 .card .prize { font: 800 clamp(34px, 10.5vw, 44px)/1.1 var(--f-body); color: #fff; margin: 4px 0 2px; text-shadow: 0 3px 0 rgba(60, 0, 10, .65); }
 .card .line { font-size: 15px; font-weight: 600; color: var(--cream); min-height: 1em; }
-.res-actions { display: flex; flex-direction: column; align-items: center; gap: 10px; opacity: 0; transition: opacity .5s ease .9s; }
+.res-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; transition: opacity .5s ease .9s; }
 #result.reveal .res-actions { opacity: 1; }
 .collect { font-size: 15px; font-weight: 600; color: rgba(255, 244, 214, .85); min-height: 1em; }
+.collect:empty { display: none; }
+/* the live proof line: a pulsing dot, the ticking clock, the stall and the result code */
+.verify { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; font: 600 14px/1.2 var(--f-body); color: var(--cream); font-variant-numeric: tabular-nums;
+  padding: 7px 14px; border-radius: 999px; background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 207, 90, .25); }
+.verify i { width: 8px; height: 8px; border-radius: 50%; background: #3ad06b; box-shadow: 0 0 8px #3ad06b; animation: live 1s ease-in-out infinite; }
+@keyframes live { 50% { opacity: .25; } }
+.verify b { font-weight: 800; letter-spacing: .08em; color: var(--gold); }
+.verify span:empty { display: none; }
+.res-btns { display: flex; gap: 10px; align-items: center; justify-content: center; }
+.res-btns .cta { min-width: 0; padding: 18px 30px; }
+.ghost { border: 1.5px solid rgba(255, 207, 90, .7); background: rgba(10, 8, 24, .6); color: var(--gold); font: 800 16px/1 var(--f-body); padding: 16px 18px; border-radius: 999px; cursor: pointer; pointer-events: auto; }
+.ghost:active { transform: scale(.96); }
+.ghost:disabled { opacity: .55; border-color: rgba(58, 208, 107, .7); color: #9ff0b8; }
+#result.lose #btnGiven { display: none; }
+/* the promoter's stamp on a card whose prize has been handed over */
+/* (it takes the place of the small line under the prize, so it never covers the prize or the TOTAL lockup) */
+.stamp { display: none; margin: 6px auto 0; width: max-content; transform: rotate(-3deg) scale(1.5); opacity: 0; pointer-events: none;
+  font: 800 13px/1.15 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: #fff; text-align: center;
+  padding: 5px 12px; border: 2.5px solid #fff; border-radius: 8px; background: rgba(20, 140, 70, .7); transition: opacity .2s ease, transform .35s cubic-bezier(.2, 1.6, .4, 1); }
+.stamp.on { display: block; opacity: 1; transform: rotate(-3deg) scale(1); }
+.card.given .line { display: none; }
+.res-score { position: relative; }
+.newbest { position: absolute; right: -78px; top: -4px; white-space: nowrap; font: 800 12px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: #2a1200; background: var(--gold);
+  padding: 6px 9px; border-radius: 999px; transform: rotate(8deg); display: none; box-shadow: 0 4px 14px rgba(255, 160, 40, .5); }
+.newbest.on { display: block; animation: slam .42s cubic-bezier(.2, 1.7, .4, 1); }
+
+/* how to play, on the landing */
+.howto { display: flex; gap: 8px; width: 100%; max-width: 380px; }
+.howto div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 6px 8px; border-radius: 14px; background: rgba(10, 8, 24, .62); border: 1px solid rgba(255, 207, 90, .25); }
+.howto svg { width: 32px; height: 32px; }
+.howto span { font: 700 13px/1.2 var(--f-body); color: var(--cream); text-wrap: balance; }
+.best { margin: 0; font: 700 14px/1 var(--f-body); color: var(--gold); min-height: 1em; text-shadow: 0 2px 8px rgba(0, 0, 0, .8); }
+.best:empty { display: none; }
+
+/* promoter tools */
+#promo { justify-content: flex-start; overflow-y: auto; background: rgba(7, 6, 15, .94); padding-top: calc(env(safe-area-inset-top, 0px) + 66px); touch-action: pan-y; }
+.promo-sheet { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.promo-sheet h2 { margin: 0; font: 800 22px/1.1 var(--f-body); color: var(--gold); }
+.promo-sheet h3 { margin: 6px 0 0; font: 800 15px/1.2 var(--f-body); color: var(--cream); }
+.p-date, .p-note { font-size: 13px; color: var(--muted); margin: 0; }
+.p-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.p-grid div { padding: 10px 12px; border-radius: 12px; background: rgba(255, 255, 255, .06); }
+.p-grid b { display: block; font: 800 22px/1.1 var(--f-body); color: #fff; font-variant-numeric: tabular-nums; }
+.p-grid span { font-size: 12px; color: var(--muted); }
+.p-field, .p-caps label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 15px; font-weight: 600; }
+.p-caps { display: flex; flex-direction: column; gap: 8px; }
+.promo-sheet input { width: 110px; font: 700 16px var(--f-body); color: #fff; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 207, 90, .35); border-radius: 10px; padding: 9px 10px; text-align: center; user-select: text; -webkit-user-select: text; }
+.p-btns { display: flex; gap: 10px; } .p-btns .ghost { flex: 1; }
+.p-tips summary { font-weight: 700; color: var(--gold); cursor: pointer; }
+.p-tips ol { margin: 8px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.45; color: var(--cream); }
+#pClose { align-self: center; margin: 4px 0 10px; }
 
 #paused { justify-content: center; gap: 22px; background: rgba(7, 6, 15, .65); }
 #paused h2 { margin: 0; font: 400 20px var(--f-num); letter-spacing: .2em; color: var(--gold); }
@@ -184,7 +235,8 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 @media (orientation: landscape) and (max-height: 500px) { #rotate { display: flex; } }
 #dbg { position: absolute; left: 8px; bottom: 8px; z-index: 60; font: 11px/1.35 ui-monospace, monospace; color: #9f9; background: rgba(0, 0, 0, .6); padding: 4px 6px; border-radius: 6px; white-space: pre; pointer-events: none; }
 /* short phones: the 3D scene above already shows the TOTAL triangle and wordmark, so the card drops its copy */
-@media (max-height: 740px) { .card { padding: 12px 14px; } .card .lockup { display: none; } .card .fest { font-size: 40px; margin-top: 0; } .res-num { font-size: 60px; } .res-tri { width: 50px; } .res-panel { gap: 10px; } .cta { padding: 16px 44px; } }
+@media (max-height: 740px) { .card { padding: 12px 14px; } .card .lockup { display: none; } .card .fest { font-size: 40px; margin-top: 0; } .res-num { font-size: 60px; } .res-tri { width: 50px; } .res-panel { gap: 10px; } .cta { padding: 16px 44px; }
+  .collect { display: none; } .res-btns .cta { padding: 16px 26px; } .tag { font-size: 17px; } .howto span { font-size: 12px; } .howto svg { width: 26px; height: 26px; } .fest { margin-top: 8px; } }
 @media (prefers-reduced-motion: reduce) { .cta::after, .hint svg, #loading img { animation: none !important; } }
 </style>
 <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }</script>
@@ -200,8 +252,15 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
     </div>
     <div class="landing-foot">
       <p class="tag" data-t="tagline">Light the diyas and win exciting gifts</p>
+      <!-- how to play, in three glances: most people play once, so they need it before the run, not during it -->
+      <div class="howto">
+        <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 20h24M8 20l5-5M8 20l5 5M32 20l-5-5M32 20l-5 5" stroke="#ffcf5a" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="20" r="4.5" fill="#fff4d6"/></svg><span data-t="how1">Swipe to light the diyas</span></div>
+        <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 5c4 7 10 10 10 18a10 10 0 0 1-20 0c0-5 3-8 5-11 1 4 3 5 5 5-1-5-1-8 0-12z" fill="#ff8a2a"/><path d="M20 22c2 3 4 4 4 7a4 4 0 0 1-8 0c0-2 2-4 4-7z" fill="#fff3c4"/></svg><span data-t="how2">Light many in a row: On Fire ×2</span></div>
+        <div><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M14 33l6-18 6 18z" fill="#b8402a"/><path d="M20 15l-4-8M20 15l1-9M20 15l5-7M20 15l-8-3M20 15l8-2" stroke="#fff3c4" stroke-width="1.8" stroke-linecap="round"/><circle cx="20" cy="22" r="15" fill="none" stroke="#ff5a3a" stroke-width="2.2"/><path d="M9 33L31 11" stroke="#ff5a3a" stroke-width="2.6" stroke-linecap="round"/></svg><span data-t="how3">Dodge the firecrackers</span></div>
+      </div>
       <p class="secs" data-t="seconds">You have 30 seconds!</p>
       <button class="cta" id="btnGo" data-t="go">Let's GO!</button>
+      <p class="best" id="best"></p>
     </div>
   </section>
 
@@ -219,6 +278,31 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
     </div>
   </div>
 
+  <!-- promoter tools: a long press on the TOTAL logo of the landing screen -->
+  <section class="screen" id="promo" aria-label="Promoter tools">
+    <div class="promo-sheet">
+      <h2 data-t="promoTitle">Promoter tools</h2>
+      <div class="p-date" id="pDate"></div>
+      <div class="p-grid" id="pStats"></div>
+      <label class="p-field"><span data-t="pStall">Stall code</span><input id="pCode" maxlength="10" autocomplete="off" placeholder="e.g. KOL-07"></label>
+      <h3 data-t="pCaps">Daily prize limits</h3>
+      <p class="p-note" data-t="pCapsNote">Leave blank for no limit. When a prize has run out for the day, the next prize down is given.</p>
+      <div class="p-caps" id="pCaps"></div>
+      <div class="p-btns"><button class="ghost" id="pExport" data-t="pExport">Export results</button><button class="ghost" id="pReset" data-t="pReset">Clear today</button></div>
+      <details class="p-tips"><summary data-t="pTips">Setup tips</summary>
+        <ol>
+          <li>Open the link once on Wi-Fi before the shift: after that it works even without signal.</li>
+          <li>Add it to the home screen (browser menu → Add to Home screen). On iPhone this hides the browser bars.</li>
+          <li>Screen brightness to maximum, volume up, silent mode off.</li>
+          <li>Set the stall code above. It appears on every result screen.</li>
+          <li>Tap “Prize given” when you hand a prize over: the card is stamped and today’s counts stay right.</li>
+          <li>Keep the phone on charge between rushes; it rests itself on the start screen.</li>
+        </ol>
+      </details>
+      <button class="cta" id="pClose" data-t="pClose">Done</button>
+    </div>
+  </section>
+
   <section class="screen" id="paused" aria-label="Paused">
     <h2 data-t="paused">Paused</h2>
     <button class="cta" id="btnResume" data-t="resume">Resume</button>
@@ -229,6 +313,7 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
       <div class="res-score">
         <img class="res-tri" src="assets/brand/total-triangle.png" alt="">
         <div><div class="res-label" data-t="lit">Triangles lit</div><div class="res-num" id="resNum">0</div></div>
+        <div class="newbest" id="newBest" data-t="newBest">New best today!</div>
       </div>
       <div class="card">
         <div class="lockup"><img class="tri" src="assets/brand/total-triangle.png" alt=""><img class="word" src="assets/brand/total-wordmark.png" alt="TOTAL"></div>
@@ -236,10 +321,13 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
         <div class="kick" id="pKick"></div>
         <div class="prize" id="pTitle"></div>
         <div class="line" id="pLine"></div>
+        <div class="stamp" id="stamp"></div>
       </div>
       <div class="res-actions">
+        <!-- live proof for the promoter: the clock ticks, so a screenshot shown again later is plainly stale -->
+        <div class="verify" id="verify"><i></i><span id="vTime"></span><span id="vStall"></span><b id="vCode"></b></div>
         <div class="collect" id="collect"></div>
-        <button class="cta" id="btnNext" data-t="next">Next player</button>
+        <div class="res-btns"><button class="ghost" id="btnGiven" data-t="given">Prize given</button><button class="cta" id="btnNext" data-t="next">Next player</button></div>
       </div>
     </div>
   </section>
@@ -255,7 +343,7 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 </div>
 <script>
   // timer bar and debug toggle live outside the module so they never block the first paint
-  if (/[?&]debug\b/.test(location.search)) document.getElementById('dbg').hidden = false;
+  if (/[?&]debug\b/.test(location.search) && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) document.getElementById('dbg').hidden = false;
 </script>
 <script type="module" src="./src/main.js"></script>
 </body>

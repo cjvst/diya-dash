@@ -108,9 +108,10 @@ export class Sound {
   // intensity of the run's music: 0 the dark gali, 1 the bazaar, 2 the approach; fire and rush lift it further
   setFire(on) { this.fire = on; this.level('music_track', on ? 1.1 : this.int ? 1 : 0.85, 0.15); }
   setRush() { this.rush = true; this.level('music_track', 1.15, 0.3); this.level('music_tabla', 1, 0.3); }
-  async load(onProgress) {
+  // names: which files to load now (default all); called again later for the rest
+  async load(onProgress, names = Object.keys(this.manifest)) {
     if (!this.ctx) return;
-    const names = Object.keys(this.manifest); let done = 0;
+    names = names.filter(n => !this.buf[n]); let done = 0;
     await Promise.all(names.map(async n => {
       try { const res = await fetch(this.manifest[n].url); if (res.ok) this.buf[n] = await this.ctx.decodeAudioData(await res.arrayBuffer()); }
       catch (e) { /* missing or undecodable: stays silent */ }

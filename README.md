@@ -37,6 +37,27 @@ Light every panel and the official mark appears in the sky. The score is triangl
   - The full road is about 250 px of thumb travel.
   - As the run speeds up, the camera rises a little and looks further down the road, and the lens widens (64° to about 72°, more when On Fire).
 
+## At the stall
+- **How to play:** three glances on the start screen (swipe, On Fire ×2, dodge the crackers), plus "Today's best: N — beat it!" for the queue.
+- **Result screen, proof against reuse:**
+  - A live clock with a pulsing dot, so a screenshot shown later has a stopped clock.
+  - The stall code, and a result code such as `DD-7K4Q`.
+  - A **Prize given** button that stamps the card and logs the time.
+  - A "New best today!" badge when the day's best is beaten.
+- **Promoter tools:** hold the TOTAL logo on the start screen for about a second. They show:
+  - today's plays, the prizes won and handed over, and the average and best scores;
+  - the stall code;
+  - optional daily limits per prize (when one runs out, the next prize down is given);
+  - **Export results**, a CSV shared to WhatsApp or mail, or downloaded;
+  - **Clear today**, and setup tips.
+
+  Everything is stored on the phone only (`src/stall.js`). The printable promoter sheet is `PROMOTER-SETUP.md`.
+- **Brand in play:** every golden diya carries the official TOTAL triangle, floating and glowing above its flame.
+- **Life in the street:** silhouetted customers and shopkeepers in the lit shop fronts, families at their doors, and children waving real sparklers.
+- **Battery and heat:** after 15 s untouched on the start screen, and once a prize is shown, the game draws at half rate and lower resolution. A touch wakes it.
+- **First open:** the short sounds load first and the start screen shows. The long music and crowd beds load behind it. Big one-shots were re-encoded to mono, taking audio from 2.3 MB to 1.7 MB.
+- **Test hooks:** `?debug` and `?autoplay` work only on `localhost`, so on the live link nobody can bot a win or fast-forward a run.
+
 ## Live link
 **https://cjvst.github.io/diya-dash/** for the team to test on phones. It is hosted on GitHub Pages from the `cjvst/diya-dash` repo. The page tells search engines not to index it, but anyone with the link can open it.
 
@@ -113,7 +134,7 @@ About 60 draw calls and 150–175k triangles.
 | `assets/audio/` | CC0 sounds; `CREDITS.json` lists each source, author and licence; `mix.json` holds levels |
 | `vendor/three/` | three.js 0.170.0 (MIT licence) |
 
-## Test hooks (`?debug` only)
+## Test hooks (`?debug` only, on localhost)
 `DiyaDash.start(seed)`, `DiyaDash.hold()`, `DiyaDash.advance(seconds)`, `DiyaDash.bench(frames)`, `DiyaDash.setQuality('low')`, `DiyaDash.world()`. `?autoplay` lets a bot play, for demos. Timed events run on the game clock, not on timers, so stepping with `advance()` is deterministic.
 
 ## Audio credits

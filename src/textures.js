@@ -329,6 +329,43 @@ export function makeSkyline() {
   const t = tex(c0, { repeat: true }); t.wrapT = THREE.ClampToEdgeWrapping; return t;
 }
 
+/* ---------------- people of the street: eight silhouettes, back-lit ---------------- */
+// Dark figures with a warm rim of light down one side, the way people look standing against a lit shop or a
+// doorway at night: 0 man in a kurta, 1 woman in a saree, 2 man waving, 3 woman with a puja thali,
+// 4 elderly man with a stick, 5 girl in a lehenga, 6 boy holding out a sparkler, 7 a couple.
+export function makePeopleAtlas() {
+  const CW = 128, CH = 256, c0 = mk(CW * 8, CH), c = c0.getContext('2d');
+  const body = '#0b0912', rim = 'rgba(255,170,90,0.95)';
+  const fig = (i, draw) => {
+    // the rim: the figure in warm light, then the dark figure over it nudged across, leaving a sliver of light
+    for (const [col, dx] of [[rim, -2.5], [body, 0]]) {
+      c.save(); c.translate(i * CW + CW / 2 + dx, 0); c.fillStyle = col; c.strokeStyle = col; c.lineCap = 'round'; c.lineJoin = 'round'; draw(c); c.restore();
+    }
+  };
+  const head = (x, y, r) => { c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); };
+  const poly = pts => { c.beginPath(); c.moveTo(pts[0], pts[1]); for (let k = 2; k < pts.length; k += 2) c.lineTo(pts[k], pts[k + 1]); c.closePath(); c.fill(); };
+  const limb = (x0, y0, x1, y1, w) => { c.lineWidth = w; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); };
+  // 0 man in a kurta
+  fig(0, () => { head(0, 34, 15); poly([-20, 56, 20, 56, 26, 150, -26, 150]); limb(-21, 62, -27, 140, 11); limb(21, 62, 27, 140, 11); poly([-17, 150, -3, 150, -5, 252, -16, 252]); poly([3, 150, 17, 150, 16, 252, 5, 252]); });
+  // 1 woman in a saree, the pallu over a shoulder and a bun
+  fig(1, () => { head(0, 36, 14); head(9, 30, 8); poly([-18, 56, 18, 56, 22, 120, 34, 252, -34, 252, -22, 120]); poly([18, 56, 26, 60, 30, 170, 20, 175]); limb(-19, 62, -24, 128, 10); });
+  // 2 man waving
+  fig(2, () => { head(0, 34, 15); poly([-20, 56, 20, 56, 24, 150, -24, 150]); limb(-21, 62, -27, 140, 11); limb(21, 62, 38, 22, 10); head(40, 16, 7); poly([-17, 150, -3, 150, -5, 252, -16, 252]); poly([3, 150, 17, 150, 16, 252, 5, 252]); });
+  // 3 woman with a puja thali, its little flames bright
+  fig(3, () => { head(0, 36, 14); poly([-18, 56, 18, 56, 22, 120, 32, 252, -32, 252, -22, 120]); limb(-18, 64, 10, 98, 10); limb(18, 64, 14, 98, 10); c.beginPath(); c.ellipse(8, 100, 26, 6, 0, 0, TAU); c.fill(); });
+  c.fillStyle = '#ffd27a'; for (const x of [-10, 2, 14, 26]) { c.beginPath(); c.arc(3 * CW + CW / 2 + x, 93, 2.6, 0, TAU); c.fill(); }
+  // 4 elderly man with a stick, a little stooped
+  fig(4, () => { head(6, 42, 14); poly([-16, 60, 22, 62, 22, 156, -22, 154]); limb(22, 70, 36, 132, 10); limb(38, 120, 44, 252, 5); poly([-15, 154, -2, 154, -4, 252, -15, 252]); poly([4, 154, 18, 154, 17, 252, 6, 252]); });
+  // 5 girl in a lehenga (child height drawn into the lower part of the cell)
+  fig(5, () => { head(0, 112, 12); head(-11, 112, 5); head(11, 112, 5); poly([-13, 128, 13, 128, 15, 176, -15, 176]); poly([-15, 172, 15, 172, 30, 252, -30, 252]); limb(-14, 134, -20, 180, 8); limb(14, 134, 20, 180, 8); });
+  // 6 boy holding a sparkler out at arm's length (the sparks come from the game)
+  fig(6, () => { head(0, 112, 12); poly([-14, 128, 14, 128, 16, 196, -16, 196]); limb(13, 134, 36, 150, 8); limb(-14, 134, -20, 186, 8); poly([-13, 196, -2, 196, -3, 252, -13, 252]); poly([2, 196, 13, 196, 12, 252, 3, 252]); limb(36, 150, 54, 128, 2.5); });
+  // 7 a couple side by side
+  fig(7, () => { head(-22, 38, 13); poly([-38, 58, -6, 58, -4, 148, -40, 148]); poly([-36, 148, -25, 148, -26, 252, -36, 252]); poly([-20, 148, -9, 148, -10, 252, -19, 252]);
+    head(22, 44, 12); head(30, 38, 7); poly([8, 62, 36, 62, 40, 120, 50, 252, -2, 252, 6, 120]); });
+  const t = tex(c0, {}); t.generateMipmaps = true; return t;
+}
+
 /* ---------------- one rice-light bulb, tiled by the jhalar shader ---------------- */
 // A small hot core in a soft halo, on black. Mipmaps average far-off strings into a steady glow.
 export function makeBulbTile() {

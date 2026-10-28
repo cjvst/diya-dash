@@ -7,4 +7,11 @@ export const S = {
   flame: ['', 'Flame up!', 'Blazing!', 'Mahajyoti!'], loading: 'Lighting the gali', paused: 'Paused', resume: 'Resume', rotate: 'Turn your phone upright to play',
   full: 'The whole TOTAL triangle is lit!',
   fireMeter: 'Fire', fireOn: 'On fire ×2', fire: 'On fire!', rush: 'Final rush!', close: 'Close!', combo: 'combo', dodge: 'Dodge the crackers!',
+  how1: 'Swipe to light the diyas', how2: 'Light many in a row: On Fire ×2', how3: 'Dodge the firecrackers',
+  best: n => `Today’s best: ${n} — beat it!`, newBest: 'New best today!',
+  given: 'Prize given', givenDone: 'Given ✓', stamp: t => `✓ Prize given · ${t}`, stallLabel: c => `Stall ${c}`,
+  promoTitle: 'Promoter tools', pStall: 'Stall code', pCaps: 'Daily prize limits', pCapsNote: 'Leave blank for no limit. When a prize has run out for the day, the next prize down is given.',
+  pExport: 'Export results', pReset: 'Clear today', pTips: 'Setup tips', pClose: 'Done', pResetAsk: 'Clear all of today’s results on this phone?',
+  pStats: { plays: 'Plays today', avg: 'Average score', best: 'Best score', none: 'No prize', given: 'given', capped: 'Moved down by a limit' },
+  pCapLabels: { pack: 'Packs per day', sticks3: '3-stick prizes per day', sticks2: '2-stick prizes per day', stick1: '1-stick prizes per day' },
 };
