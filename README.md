@@ -14,7 +14,7 @@ Light every panel and the official mark appears in the sky. The score is the pla
   - **On Fire:** every catch fills the Fire meter. When it's full, the flame burns white-hot for 5 seconds: points double, the catch widens, the lens and screen edges flare, and the music goes double-time.
   - **Firecrackers:** anaar fountains and chakri spinners sit on red rings in the road, from the bazaar on (sometimes in pairs to thread). Hitting one costs the streak, the meter and a flame level. Skimming past is a "Close!" bonus.
   - **TOTAL rush:** the last 8 seconds (from the downbeat of bar 13 of the music, where the score changes key) surge from 15 to 19 m/s down golden lanes, with the street lit up and a heartbeat over the last five seconds.
-  - **Feedback:** points pop up where they're earned, and a combo counter sits beside the road.
+  - **Feedback:** points pop up where they're earned, and a combo counter sits beside the road. The callouts (flame level, On Fire, TOTAL RUSH) appear just under the gem, tracked every frame: the eyes are on the gem and the diya coming at it, so that is where they are seen, and they never cover what is ahead.
 - **Look:** real-time 3D (three.js / WebGL). It is true night, lit only by the street's own lights, which are built for phone screens played outdoors:
   - Shop and door lamps light the house fronts per pixel and throw pools on the stones that show the paving's texture.
   - Rice-light jhalars run along the rooflines and hang down the facades.

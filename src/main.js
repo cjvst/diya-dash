@@ -549,7 +549,8 @@ function showCombo(up) {
   } else if (!up && c.classList.contains('on')) { c.className = 'combo drop'; }
 }
 let fireT = -1, hurtT = -1, kickT = -1, rushCue = false, rushOn = false, dodgeShown = false, fireBlend = 0;
-let pulseT = 9, cheerT = 9, goldT = 9, launchT = -1;
+let pulseT = 9, cheerT = 9, goldT = 9, launchT = -1, focusY = -1;
+const hudEl = $('hud');
 const waves = [];
 function updateScore(reset) {
   const el = $('score'); el.textContent = run.score;
@@ -867,6 +868,13 @@ function update(dt) {
   triLight.intensity = 0.12 + 0.9 * triGlow;
   // camera
   placeCamera(dt, pz);
+  // While playing, the eyes are on the gem and the diya coming at it, and attention falls away radially from
+  // there: the callouts (flame level, On Fire, TOTAL RUSH) sit just under the gem, inside that focus, where
+  // they never cover what is coming. The HUD follows the gem's height on screen through --focus-y.
+  if (mode === 'play') {
+    const gv = tmp.copy(player.root.position).project(camera), gy = Math.round(((1 - gv.y) / 2) * canvas.clientHeight);
+    if (Math.abs(gy - focusY) > 1) { focusY = gy; hudEl.style.setProperty('--focus-y', `${gy}px`); }
+  }
   sky.position.copy(camera.position); stars.position.copy(camera.position); stars.material.uniforms.uTime.value = clock;
   gradePass.uniforms.uTime.value = clock;
   gradePass.uniforms.uFade.value = fade ? (fade.t < 0.35 ? fade.t / 0.35 : 1 - (fade.t - 0.35) / 0.45) : 0;
