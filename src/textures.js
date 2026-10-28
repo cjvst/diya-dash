@@ -368,6 +368,17 @@ export function makeCoinEdge() {
   for (let x = 0; x < 256; x += 4) { c.fillStyle = '#e0e0e0'; c.fillRect(x, 0, 2, 16); c.fillStyle = '#505050'; c.fillRect(x + 2, 0, 2, 16); }
   return c0;
 }
+// A sky lantern: a paper lantern lit from inside, wider at the top, its flame a bright core near the bottom
+export function makeSkyLantern() {
+  const W = 64, H = 88, c0 = mk(W, H), c = c0.getContext('2d');
+  const body = new Path2D(); body.moveTo(10, 8); body.lineTo(54, 8); body.lineTo(46, 74); body.lineTo(18, 74); body.closePath();
+  const g = c.createLinearGradient(0, 8, 0, 74); g.addColorStop(0, 'rgba(255,120,40,.55)'); g.addColorStop(0.6, 'rgba(255,170,70,.85)'); g.addColorStop(1, 'rgba(255,225,150,.95)');
+  c.fillStyle = g; c.fill(body);
+  c.strokeStyle = 'rgba(255,230,180,.6)'; c.lineWidth = 1.5; c.stroke(body);
+  const f = c.createRadialGradient(32, 70, 0, 32, 70, 16); f.addColorStop(0, 'rgba(255,255,235,1)'); f.addColorStop(0.4, 'rgba(255,220,140,.8)'); f.addColorStop(1, 'rgba(255,160,60,0)');
+  c.fillStyle = f; c.fillRect(0, 50, W, 38);
+  return c0;
+}
 export function recolor(img, color) {
   const c = mk(img.width, img.height), x = c.getContext('2d');
   x.drawImage(img, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, c.width, c.height);
@@ -448,6 +459,17 @@ export function makeSkyline() {
     for (let k = 0; k < lw; k += 5) { c.fillStyle = col; c.globalAlpha = 0.6 + r() * 0.4; c.fillRect(lx + k, ly, 2, 2); }
     c.globalAlpha = 1;
   }
+  // The city sits in the same night haze the street fades into, so it stands on the land line instead of
+  // floating over a band of fog: its lower storeys sink into a warm glow of city light (only where there are
+  // buildings), and along the bottom runs a band of haze, from the fog's own colour up into that glow, with
+  // the city's street lights twinkling in it.
+  c.save(); c.globalCompositeOperation = 'source-atop';
+  const hz = c.createLinearGradient(0, H * 0.35, 0, H); hz.addColorStop(0, 'rgba(40,26,46,0)'); hz.addColorStop(0.75, 'rgba(58,36,52,.5)'); hz.addColorStop(1, 'rgba(70,44,56,.85)');
+  c.fillStyle = hz; c.fillRect(0, 0, W, H); c.restore();
+  const band = c.createLinearGradient(0, H - 36, 0, H); band.addColorStop(0, 'rgba(62,40,54,0)'); band.addColorStop(0.5, 'rgba(64,42,56,.85)'); band.addColorStop(1, '#141030');
+  c.fillStyle = band; c.fillRect(0, H - 36, W, 36);
+  for (let k = 0; k < 520; k++) { c.fillStyle = pick(r, ['#ffd08a', '#ffb85a', '#ffe8c0', '#ff9a40', '#bfe0ff']); c.globalAlpha = 0.35 + r() * 0.65; c.fillRect(r() * W, H - 18 - r() * 12, 1.5 + r(), 1.5); }
+  c.globalAlpha = 1;
   const t = tex(c0, { repeat: true }); t.wrapT = THREE.ClampToEdgeWrapping; return t;
 }
 

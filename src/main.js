@@ -234,7 +234,7 @@ async function boot() {
   decorDiyas = new DiyaSet(230, tex.diya, brass, { seg: 14 });
   scene.add(gameDiyas.group, decorDiyas.group, flames.mesh, pools.mesh, washes.mesh, rings.mesh);
   rings.mat.uniforms.uFogCol.value.copy(FOG);
-  makeCrackers(); makeTokens(triImg, pmrem.fromEquirectangular(T.makeStudioEnv()).texture);
+  makeCrackers(); makeTokens(triImg, pmrem.fromEquirectangular(T.makeStudioEnv()).texture); makeSkyLanterns();
   fx = new FX(scene); fx.setScale(canvas.clientHeight * renderer.getPixelRatio(), camera.fov);
   triangle = new TotalTriangle(scene, SKY_TRI, brandTex, wordWhite);
   // the city on the far horizon, either side of the open ground under the triangle (the middle stays clear
@@ -249,6 +249,7 @@ async function boot() {
   // the light sources, which the reflection camera sees as well
   for (const o of [street.bulbs, street.lanterns, street.jhalar.mesh, flames.mesh, washes.mesh, triangle.group, triangle.flash, player.root, tokenMesh]) o.traverse(c => c.layers.enable(REFL));
   for (const sl of street.slots) sl.brd.mesh.layers.enable(REFL);
+  skyLanterns.mesh.layers.enable(REFL);
   triangle.word.layers.disable(REFL);   // (mirrored right under itself, the wordmark read as garbled text)
   // one lamp model for the whole street: the shop and door lamps light the diyas, their brass stands (a glint
   // on the metal) and the firecrackers too, not only the house fronts
@@ -316,7 +317,7 @@ function toAttract(first) {
   street.chaseFront = -1e9; flashT = shakeT = -1; glitterUntil = 0;
   resetFrames();                        // judge quality on this screen's frames, not the finale's
   glowTarget = 0.5; if (first) glow = 0.5; slotNext = 0; camS = -4;
-  triangle.reset(); fx.clear();
+  triangle.reset(); fx.clear(); clearLanterns();
   $('hud').classList.remove('on'); $('result').classList.remove('on', 'charge', 'reveal'); clearPetals();
   // a score to beat, for the queue watching at the stall
   const best = stall.best(); $('best').textContent = best > 0 ? S.best(best) : '';
@@ -403,7 +404,7 @@ function launchGem() {
 }
 function strike() {
   finale.struck = true; finale.strikeAt = modeT; flashT = 0; shakeT = 0;
-  triangle.blast(); triangle.celebrate();
+  triangle.blast(); triangle.celebrate(); releaseLanterns();
   // the more of the triangle the player lit, the bigger the show: 4 shells for a few panels, 10 for all of it.
   // The first ones burst at once, high in the sky (the strike set them off); rockets climb in after them.
   const n = 4 + Math.round(6 * triangle.litCount() / PANELS);
@@ -413,6 +414,51 @@ function strike() {
 }
 // Fireworks over the chowk, between the camera and the sky triangle, in pairs left and right working
 // outwards: gold and TOTAL blue spheres, rings and willows of slow gold.
+// Sky lanterns: paper lanterns let go across the chowk at the strike, rising slowly round the sky triangle and
+// on behind the result, swaying, their flames flickering, and mirrored in the wet stones. One draw call.
+const LANTERN_N = 56;
+let skyLanterns;
+function makeSkyLanterns() {
+  const q = new THREE.PlaneGeometry(1, 1.375), g = new THREE.InstancedBufferGeometry();
+  g.index = q.index; g.setAttribute('position', q.attributes.position); g.setAttribute('uv', q.attributes.uv);
+  const P = new Float32Array(LANTERN_N * 4).fill(-1), V = new Float32Array(LANTERN_N * 4);
+  const aP = new THREE.InstancedBufferAttribute(P, 4), aV = new THREE.InstancedBufferAttribute(V, 4);
+  g.setAttribute('aP', aP); g.setAttribute('aV', aV); g.instanceCount = LANTERN_N;
+  const tex = new THREE.CanvasTexture(T.makeSkyLantern()); tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTex: { value: tex }, uTime: { value: 0 } },
+    vertexShader: /* glsl */`
+      attribute vec4 aP; attribute vec4 aV; uniform float uTime; varying vec2 vUv; varying float vA;
+      void main() {
+        float t = uTime - aP.w;
+        vA = aP.w < 0.0 || t < 0.0 ? 0.0 : smoothstep(0.0, 1.0, t) * (1.0 - smoothstep(24.0, 32.0, t)) * (0.8 + 0.2 * sin(uTime * 9.0 + aV.y * 5.0));
+        vec3 c = aP.xyz + vec3(sin(t * 0.55 + aV.y) * 1.3, max(t, 0.0) * aV.x, cos(t * 0.4 + aV.y) * 0.9);
+        vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]), up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+        gl_Position = projectionMatrix * viewMatrix * vec4(c + (right * position.x + up * position.y) * aV.z, 1.0); vUv = uv;
+      }`,
+    fragmentShader: /* glsl */`
+      uniform sampler2D uTex; varying vec2 vUv; varying float vA;
+      void main() { vec4 t = texture2D(uTex, vUv); gl_FragColor = vec4(t.rgb * t.a * vA * 1.7, 1.0);
+        #include <colorspace_fragment>
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const mesh = new THREE.Mesh(g, mat); mesh.frustumCulled = false; mesh.renderOrder = 18; scene.add(mesh);
+  skyLanterns = { mesh, mat, P, V, aP, aV };
+}
+function releaseLanterns() {
+  const { P, V, aP, aV } = skyLanterns, cz = camera.position.z;
+  for (let i = 0; i < LANTERN_N; i++) {
+    const near = i < 10, side = i % 2 ? 1 : -1;
+    // a few let go close by on either side, the rest out across the chowk towards the triangle, never in the
+    // narrow cone in front of the sky's wordmark (one drifting across it turned TOTAL into TOTAU)
+    const dist = near ? 14 + Math.random() * 16 : 30 + Math.random() * 130;
+    P.set([side * (near ? 5 + Math.random() * 6 : 0.16 * dist + Math.random() * 22), 1.5 + Math.random() * (near ? 2 : 8), cz - dist, clock + i * 0.05 + Math.random() * 0.9], i * 4);
+    V.set([1.3 + Math.random() * 1.3, Math.random() * 6.28, near ? 1.3 + Math.random() * 0.3 : 1.8 + Math.random() * 1.0, 0], i * 4);
+  }
+  aP.needsUpdate = true; aV.needsUpdate = true;
+}
+function clearLanterns() { if (!skyLanterns) return; skyLanterns.P.fill(-1); skyLanterns.aP.needsUpdate = true; }
 function chowkFirework(i, big, now = false) {
   // in pairs, at three spreads either side of the triangle, bursting about its upper half
   const side = i % 2 ? 1 : -1, x = side * (5 + (Math.floor(i / 2) % 3) * 8) + (Math.random() - 0.5) * 4;
@@ -826,6 +872,12 @@ function update(dt) {
   // in the finale the gem itself becomes the comet: it vanishes into it at launch
   const gemA = !showPlayer || mode === 'result' ? 0 : mode === 'finale' && finale.launched ? 1 - clamp((modeT - (finale.impact - FIN.flight)) / 0.12, 0, 1) : 1;
   player.update(dt, clock, mode === 'attract' ? Math.sin(clock * 0.7) * 0.6 : run.x, pz, run.level, flames, pools, gemA, lift);
+  // the strike: a ring of gold light races out across the chowk's stones from under the gem's launch, so the
+  // ground answers the sky
+  if (finale && finale.struck) {
+    const t = modeT - finale.strikeAt;
+    if (t < 1.4) { const k = 1 - t / 1.4; pools.push(player.root.position.x, 0.014, player.root.position.z - 6, 4 + 75 * t, 1.6 * k * k, 1.1 * k * k, 0.45 * k * k); }
+  }
   // the launch at GO: a flash of warm light spreading over the stones from under the gem, gone in half a second
   if (launchT >= 0) {
     launchT += dt; const k = 1 - launchT / 0.5;
@@ -876,6 +928,7 @@ function update(dt) {
     if (Math.abs(gy - focusY) > 1) { focusY = gy; hudEl.style.setProperty('--focus-y', `${gy}px`); }
   }
   sky.position.copy(camera.position); stars.position.copy(camera.position); stars.material.uniforms.uTime.value = clock;
+  if (skyLanterns) skyLanterns.mat.uniforms.uTime.value = clock;
   gradePass.uniforms.uTime.value = clock;
   gradePass.uniforms.uFade.value = fade ? (fade.t < 0.35 ? fade.t / 0.35 : 1 - (fade.t - 0.35) / 0.45) : 0;
   gradePass.uniforms.uFlash.value = flashT >= 0 && !reducedMotion ? 0.42 * Math.exp(-flashT * 7) : 0;

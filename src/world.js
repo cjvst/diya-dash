@@ -323,7 +323,7 @@ const JHALAR_THEMES = [
   ['#ffd39a', '#fff0c8', 0], ['#ffc44d', '#ff9a2e', 0], ['#ffd39a', '#ffc44d', 1],
   ['#ff3d7f', '#3fc8ff', 1], ['#ff4b2b', '#3ad06b', 0], ['#b45bff', '#ffd23f', 1],
 ].map(([a, b, run]) => ({ a: col(a), b: col(b), run }));
-const BEADS_PER_SLOT = 560, BULBS_PER_SLOT = 150, LANTERNS_PER_SLOT = 10, RANGOLI_PER_SLOT = 8, WIRES_PER_SLOT = 260, JHALARS_PER_SLOT = 18, PEOPLE_PER_SLOT = 16, FLAGS_PER_SLOT = 48;
+const BEADS_PER_SLOT = 560, BULBS_PER_SLOT = 150, LANTERNS_PER_SLOT = 10, RANGOLI_PER_SLOT = 8, WIRES_PER_SLOT = 260, JHALARS_PER_SLOT = 18, PEOPLE_PER_SLOT = 26, FLAGS_PER_SLOT = 48;
 // paper flags strung across the street for the festival: saffron, white, green, pink, yellow, blue
 const FLAG_COLS = ['#ff8a1a', '#f2efe6', '#1f9a4a', '#ff4f9a', '#ffd23a', '#2f7cff'].map(col);
 // Lamps that light the house fronts per pixel: the nearest SL_N shop lights, door lamps and curtain lights.
@@ -726,6 +726,16 @@ export class Street {
       if (Pp >= PEnd) break;
       this.people.set(Pp++, p.x + open, p.z - s0, p.s, p.flip, p.kind, p.ph);
       if (p.kind === 6) sl.sparklers.push({ x: p.x + open + 0.36 * p.s, y: 0.85 * p.s, z: p.z - s0, ph: p.ph });
+    }
+    // out in the chowk the street's people line the way, both sides of the lines of diyas, cheering the gem
+    // in (a few children with sparklers among them); from their own stream, so nothing else moves
+    if (beyond) {
+      const rc = mulberry32(mod(k * 7907 + 3, 1e9));
+      for (let n = 0; Pp < PEnd && n < 24; n++) {
+        const sd = n % 2 ? 1 : -1, x = sd * (4.4 + rc() * 2.4), z = -s0 - (Math.floor(n / 2) + rc()) * 2, kind = (rc() * 8) | 0, ph = rc() * 6.28;
+        this.people.set(Pp++, x, z, 0.95 + rc() * 0.15, rc() < 0.5 ? -1 : 1, kind, ph);
+        if (kind === 6) sl.sparklers.push({ x: x + 0.36, y: 0.85, z, ph });
+      }
     }
     for (; Pp < PEnd; Pp++) this.people.hide(Pp);
     this.people.flush();

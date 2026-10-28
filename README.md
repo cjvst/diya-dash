@@ -4,7 +4,7 @@ A 30-second mobile web game for TOTAL sampling activations. You carry the TOTAL 
 - The music builds instead of fading, with a dhol roll swelling to a downbeat.
 - The gem sails out of the gali into the open chowk, and its lines of diyas catch fire in a race to the horizon.
 - The gem launches as a comet into the heart of the triangle and strikes it on the downbeat: a conch, drums, a flash, a shockwave across the panels and a camera shake.
-- Fireworks and gold glitter fill the sky, and the final score lands with a thump.
+- Fireworks and gold glitter fill the sky, a ring of gold light races across the chowk's stones, sky lanterns rise from the crowd lining the chowk, and the final score lands with a thump. The city on the horizon stands on a land line of haze and street lights, where the chowk's stones meet it.
 
 Light every panel and the official mark appears in the sky. The score is the player's TOTAL: "TOTAL 82 diyas lit".
 
