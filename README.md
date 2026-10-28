@@ -22,6 +22,11 @@ Light every panel and the official mark appears in the sky. The score is the pla
   - Lamps sit under awnings, so upper floors stay dark and their lit windows (a third of the homes from the start, Diwali-style) show.
   - A filmic grade with a gentle S-curve keeps the night a night, even On Fire, whose screen edges close in and burn at the rim; shadows stay a deep blue, never dead black.
 
+  - **Reflections:** a freshly washed street, as every Diwali morning has one. Each frame a camera mirrored in the ground renders just the light sources (bulbs, lanterns, flames, boards, fireworks, the gem, the sky triangle) into a small target, and the stones sample it: streaked down the screen, broken up by the paving joints and by wet and dry patches, stronger at a glancing angle. The polished chowk mirrors the TOTAL triangle and the comet's strike. This is a planar reflection limited to the emitters, a few milliseconds where full screen-space reflections would cost far more on a phone.
+  - **Relief and contact shadow:** the facade atlas is its own bump map, and the bumped normal feeds the street's per-pixel lamps, so brick, plaster, frames and shutters stand out where light rakes across them. The stones darken where they meet the house fronts.
+  - **Light shafts** from the sky triangle (after GPU Gems 3, ch. 13: its glow marched back towards it, 8 jittered taps) shine down the gali between the rooftops and flood the sky at the strike.
+  - **Sharpening** after AMD's Contrast Adaptive Sharpening gives the crisp finish of an upscaler from a phone-sized render. The blur, shafts and reflection streaks start at a per-pixel offset (interleaved gradient noise), so their few taps read as fine grain, never as stepped copies.
+
   The houses, shops, lights and fireworks are all built in code. The only image files are the two official brand assets.
 - **Brand:** the official TOTAL triangle and wordmark come from the brand team's *TOTAL Brand Asset* deck (21 Oct 2026). The screens follow the brand team's notes to the agency. The brand works as a word, in a few natural places rather than everywhere: the score is the player's **TOTAL** ("TOTAL 82" in play, "TOTAL 82 diyas lit" on the card), the last stretch is the **TOTAL rush**, a full sky triangle is **Totally lit!**, and the queue sees "Best TOTAL today". The marks appear on the player gem, the golden diyas, the sky triangle and its wordmark, the landing, and the boards of about one shop in three (TOTAL boards and TOTAL-sponsored paan shops, the way a real bazaar looks).
 - **Sound:** the score is made live in the game on a 130 BPM clock, driven by the **dhol** (the beat of every baraat and Diwali street party, and it carries on a phone speaker). It follows a 30-second arc instead of looping:
@@ -102,7 +107,7 @@ When a game ends, the page sends the result two ways:
 - A `diyadash:result` CustomEvent on `window`, with the same fields in `detail`.
 
 ## Performance
-There are three tiers: high, med and low run at 2×, 1.5× and 1× resolution.
+There are three tiers: high, med and low run at 2×, 1.5× and 1× resolution. High and med add the reflections (a target at 40% and 25% of the screen) and the light shafts; low has neither. Measured on the development laptop at phone resolution, the two cost about 3–5 ms a frame together on med. 4× MSAA was tried and dropped: it cost about 11 ms for little over a 2× render with sharpening.
 - **Starting tier:** iPhones and Snapdragon flagships (Adreno 7xx) start on high. Every other phone starts on med.
 - **Adapting:** quality steps down after two slow checks (about 3 s of long frames). A phone that runs comfortably for about 5 s steps up, unless it has already had to step down. This mostly settles on the landing screen, before anyone plays.
 - **Forcing a tier:** add `?q=low|med|high` to the link.
@@ -116,7 +121,7 @@ Measured on an Intel Iris Xe laptop GPU at phone resolution (390×844 at 2×, so
 | of which per-pixel lamps on the house fronts | about 0.7 ms |
 | of which light pools on the stones | about 0.7 ms |
 
-About 60 draw calls and 150–175k triangles.
+About 60 draw calls and 150–175k triangles, plus about 20 calls for the reflection pass.
 
 **Test on a low-end Android phone before the activation.** `?debug` shows FPS and frame times on screen.
 

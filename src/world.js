@@ -228,7 +228,9 @@ export class Street {
     this.chaseFront = -1e9; this.onIgnite = null;     // the finale's race of fire along the chowk's diyas (see update)
     const slPos = this.slPos, slCol = this.slCol;
     // houses and their props share one material: the facade atlas times vertex colour
-    this.facMat = new THREE.MeshLambertMaterial({ map: tex.facade.map, emissiveMap: tex.facade.emissiveMap, emissive: 0xffb466, emissiveIntensity: 1.25, vertexColors: true });
+    // (the atlas is its own bump map: brick courses, plaster, frames, shutters and grilles stand out in relief
+    // where a lamp rakes across them, at the cost of a texture read)
+    this.facMat = new THREE.MeshLambertMaterial({ map: tex.facade.map, bumpMap: tex.facade.map, bumpScale: 2.2, emissiveMap: tex.facade.emissiveMap, emissive: 0xffb466, emissiveIntensity: 1.25, vertexColors: true });
     this.facMat.onBeforeCompile = sh => {
       sh.uniforms.uGlow = glow; sh.uniforms.uSLPos = { value: slPos }; sh.uniforms.uSLCol = { value: slCol };
       sh.vertexShader = sh.vertexShader
@@ -247,7 +249,8 @@ export class Street {
           totalEmissiveRadiance += diffuseColor.rgb * ( 0.015 + 0.04 * uGlow );`)
         .replace('#include <lights_fragment_end>', /* glsl */`#include <lights_fragment_end>
           {
-            vec3 sn = normalize( vSLN ), sAcc = vec3( 0.0 );
+            // the bumped normal, back in world space, so the relief catches the street's lamps too
+            vec3 sn = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz ), sAcc = vec3( 0.0 );
             for ( int i = 0; i < ${SL_N}; i ++ ) {
               vec3 d = uSLPos[ i ].xyz - vSLW; float dd = dot( d, d ) + 0.05;
               float w = 1.0 - dd * uSLPos[ i ].w;
@@ -267,16 +270,46 @@ export class Street {
     const groundMat = new THREE.MeshPhongMaterial({ map: tex.paving.map, normalMap: tex.paving.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), shininess: 18, specular: 0x2a2622 });
     // wear across the stones at a scale far larger than a tile (worn paths, damp patches, swept and unswept), so
     // the open chowk never shows the paving repeat; fixed to the world, so it never slides with the strip
+    // Reflections: main.js renders the street's lights from a camera mirrored in the ground into a small target
+    // each frame; the stones sample it here (see the fragment below). It is a freshly washed street, as every
+    // Diwali morning has one: shining in wet patches, dull in the joints, bright at a glancing angle, and the
+    // polished stone of the chowk mirrors the sky triangle.
+    this.refl = { uRefl: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uReflOn: { value: 0 } };
+    const refl = this.refl, PLAZA_Z = (COURSE_END + 54).toFixed(1);
     groundMat.onBeforeCompile = sh => {
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vGW;')
-        .replace('#include <project_vertex>', '#include <project_vertex>\n  vGW = ( modelMatrix * vec4( transformed, 1.0 ) ).xz;');
+      Object.assign(sh.uniforms, refl);
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform mat4 uReflMat; varying vec2 vGW; varying vec3 vGWP; varying vec4 vRefl;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\n  vec4 gwp = modelMatrix * vec4( transformed, 1.0 ); vGW = gwp.xz; vGWP = gwp.xyz; vRefl = uReflMat * gwp;');
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-        varying vec2 vGW;
+        uniform sampler2D uRefl; uniform float uReflOn; varying vec2 vGW; varying vec3 vGWP; varying vec4 vRefl;
         float gH( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
         float gN( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
           return mix( mix( gH( i ), gH( i + vec2( 1.0, 0.0 ) ), f.x ), mix( gH( i + vec2( 0.0, 1.0 ) ), gH( i + vec2( 1.0, 1.0 ) ), f.x ), f.y ); }`)
         .replace('#include <map_fragment>', `#include <map_fragment>
-        diffuseColor.rgb *= 0.7 + 0.4 * gN( vGW * 0.09 ) + 0.16 * ( gN( vGW * 0.41 + 17.0 ) - 0.5 );`);
+        float pavL = dot( diffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );       // the paving itself: dark in the joints
+        float gali = smoothstep( -${PLAZA_Z} - 12.0, -${PLAZA_Z} + 4.0, vGW.y );    // 1 between the houses, 0 out in the chowk
+        diffuseColor.rgb *= 0.7 + 0.4 * gN( vGW * 0.09 ) + 0.16 * ( gN( vGW * 0.41 + 17.0 ) - 0.5 );
+        // contact shadow where the stones meet the house fronts and their steps
+        diffuseColor.rgb *= mix( 1.0, mix( 0.42, 1.0, smoothstep( 0.0, 1.4, ${FRONT_X.toFixed(2)} - abs( vGW.x ) ) ), gali );`)
+        .replace('#include <opaque_fragment>', `
+        if ( uReflOn > 0.5 ) {
+          // the mirrored lights, nudged by the stones' own bumps and smeared down the screen the way lights
+          // streak on a wet street
+          vec2 ruv = vRefl.xy / vRefl.w;
+          #ifdef USE_NORMALMAP
+            ruv += ( texture2D( normalMap, vNormalMapUv ).xy - 0.5 ) * 0.02;
+          #endif
+          // (the taps start at a different offset at each pixel, so the streak is a smooth smear, not stacked copies)
+          float j = 0.55 + 0.9 * fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+          vec3 r = texture2D( uRefl, ruv ).rgb * 0.26
+            + ( texture2D( uRefl, ruv + vec2( 0.0, 0.008 * j ) ).rgb + texture2D( uRefl, ruv - vec2( 0.0, 0.008 * j ) ).rgb ) * 0.2
+            + ( texture2D( uRefl, ruv + vec2( 0.0, 0.02 * j ) ).rgb + texture2D( uRefl, ruv - vec2( 0.0, 0.02 * j ) ).rgb ) * 0.17;
+          float graze = 1.0 - abs( normalize( cameraPosition - vGWP ).y );
+          float wet = smoothstep( 0.32, 0.72, gN( vGW * 0.06 + 3.7 ) );
+          float k = ( 0.1 + 0.8 * graze * graze * graze ) * mix( 1.0, 0.35 + 0.65 * wet, gali ) * mix( 1.0, 0.8, gali ) * smoothstep( 0.012, 0.05, pavL );   // (pavL is linear albedo: the joints are near black)
+          outgoingLight += r * k;
+        }
+        #include <opaque_fragment>`);
     };
     this.ground = new THREE.Mesh(gg, groundMat);
     // drawn after the houses, so the stretch of ground hidden behind them is never shaded

@@ -27,10 +27,11 @@ const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 const DEBUG = LOCAL && params.has('debug'), AUTOPLAY = LOCAL && params.has('autoplay');
 
 /* ---------------- quality: start high, step down if the phone struggles ---------------- */
+// refl: the size of the street's reflection target, as a share of the screen (0: none); rays: light shafts
 const QUALITY = [
-  { name: 'low', dpr: 1, msaa: 0, bloomRes: 0.3, bloom: 0.8 },
-  { name: 'med', dpr: 1.5, msaa: 0, bloomRes: 0.36, bloom: 0.85 },
-  { name: 'high', dpr: 2, msaa: 0, bloomRes: 0.42, bloom: 0.9 },
+  { name: 'low', dpr: 1, msaa: 0, bloomRes: 0.3, bloom: 0.8, refl: 0, rays: 0 },
+  { name: 'med', dpr: 1.5, msaa: 0, bloomRes: 0.36, bloom: 0.85, refl: 0.25, rays: 1 },
+  { name: 'high', dpr: 2, msaa: 0, bloomRes: 0.42, bloom: 0.9, refl: 0.4, rays: 1 },
 ];
 // Start at medium (most promoters' phones are mid-range Androids) and let adaptQuality move it;
 // iPhones and recent Snapdragon flagships (Adreno 7xx) start high.
@@ -63,6 +64,10 @@ const camera = new THREE.PerspectiveCamera(64, 1, 0.3, 2400);
 // the end of the run, and whole above the result panel from the chowk.
 const SKY_TRI = { z: -(COURSE_END + 1220), width: 610, apexY: 126 };
 let composer, bloomPass, gradePass;
+// the reflection camera and its target (see renderReflections)
+const REFL = 1, reflCam = new THREE.PerspectiveCamera(); reflCam.layers.set(REFL);
+let reflRT = null;
+const _rq = new THREE.Matrix4(), _rt = new THREE.Vector3(), _cc = new THREE.Color();
 function buildComposer() {
   const q = QUALITY[qi], W = canvas.clientWidth, H = canvas.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, resting ? 1 : q.dpr);
   renderer.setPixelRatio(dpr); renderer.setSize(W, H, false);
@@ -78,10 +83,12 @@ function buildComposer() {
   // the grade, on the display image: cool night shadows that never go to dead black (they would vanish
   // in sunlight), warm lamplit highlights, a touch more colour, a light vignette and film grain
   gradePass = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uFade: { value: 0 }, uFlash: { value: 0 }, uSpeed: { value: 0 }, uFever: { value: 0 }, uHurt: { value: 0 }, uBlur: { value: 0 }, uAspect: { value: W / H } },
+    uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uFade: { value: 0 }, uFlash: { value: 0 }, uSpeed: { value: 0 }, uFever: { value: 0 }, uHurt: { value: 0 }, uBlur: { value: 0 }, uAspect: { value: W / H },
+      uPx: { value: new THREE.Vector2(1 / (W * dpr), 1 / (H * dpr)) }, uSharp: { value: 0.2 }, uSun: { value: new THREE.Vector2(0.5, 0.8) }, uRays: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: /* glsl */`
       uniform sampler2D tDiffuse; uniform float uTime; uniform float uFade; uniform float uFlash; uniform float uSpeed; uniform float uFever; uniform float uHurt; uniform float uBlur; uniform float uAspect;
+      uniform vec2 uPx; uniform float uSharp; uniform vec2 uSun; uniform float uRays;
       varying vec2 vUv;
       // speed lines: thin dashes streaming out from the vanishing point, only towards the edges of the screen
       float speedLines(vec2 uv) {
@@ -95,11 +102,30 @@ function buildComposer() {
       }
       void main() {
         vec3 c = texture2D(tDiffuse, vUv).rgb;
+        // interleaved gradient noise: each pixel starts its blur and shaft samples at a different offset, so their
+        // few taps read as fine grain instead of stepped copies
+        float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        // contrast-adaptive sharpening (after AMD's CAS): crisp texture and edges from a phone-sized render, the
+        // way an upscaler finishes its image, weaker where the contrast is already high so edges never ring
+        {
+          vec3 n = texture2D(tDiffuse, vUv + vec2(0.0, uPx.y)).rgb, s = texture2D(tDiffuse, vUv - vec2(0.0, uPx.y)).rgb;
+          vec3 e = texture2D(tDiffuse, vUv + vec2(uPx.x, 0.0)).rgb, w = texture2D(tDiffuse, vUv - vec2(uPx.x, 0.0)).rgb;
+          vec3 mn = min(c, min(min(n, s), min(e, w))), mx = max(c, max(max(n, s), max(e, w)));
+          vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0)), wt = -amp * uSharp;
+          c = clamp((c + (n + s + e + w) * wt) / (1.0 + 4.0 * wt), 0.0, 1.0);
+        }
+        // light shafts from the sky triangle (after GPU Gems 3, ch. 13): its glow marched back towards it through
+        // the haze, so it shines down the gali between the dark rooftops, and floods the sky at the strike
+        if (uRays > 0.01) {
+          vec2 dl = (vUv - uSun) * (0.9 / 8.0), tc = vUv - dl * ign; float il = 1.0; vec3 acc = vec3(0.0);
+          for (int i = 0; i < 8; i++) { tc -= dl; acc += max(texture2D(tDiffuse, tc).rgb - 0.6, 0.0) * il; il *= 0.86; }
+          c += acc / (1.0 + acc) * uRays * 0.32 * vec3(1.0, 0.82, 0.55);     // (rolled off: the strike must not white out)
+        }
         // speed blur: the outer screen smeared towards the vanishing point, never the middle where you aim
         if (uBlur > 0.01) {
           vec2 dir = vUv - vec2(0.5, 0.6);
           float m = smoothstep(0.18, 0.6, length(dir * vec2(uAspect, 1.0))) * uBlur;
-          if (m > 0.01) { vec3 acc = c; for (int i = 1; i <= 5; i++) acc += texture2D(tDiffuse, vUv - dir * (float(i) * 0.011 * m)).rgb; c = acc / 6.0; }
+          if (m > 0.01) { vec3 acc = c; for (int i = 1; i <= 5; i++) acc += texture2D(tDiffuse, vUv - dir * ((float(i) - ign) * 0.011 * m)).rgb; c = acc / 6.0; }
         }
         float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
         c += mix(vec3(-0.01, 0.0, 0.035), vec3(0.03, 0.01, -0.025), smoothstep(0.12, 0.7, l)) * (1.0 - l * 0.6);
@@ -126,6 +152,7 @@ function buildComposer() {
   });
   composer.addPass(gradePass);
   fx && fx.setScale(H * dpr, camera.fov);
+  if (reflRT) { reflRT.dispose(); reflRT = null; }
 }
 
 /* ---------------- sky ---------------- */
@@ -216,9 +243,12 @@ async function boot() {
   const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, color: new THREE.Color(0.8, 0.78, 0.85), transparent: true, fog: false, depthWrite: false, side: THREE.BackSide });
   for (const [a0, a1] of [[0.14, 1.25], [-1.25, -0.14]]) {
     const city = new THREE.Mesh(new THREE.CylinderGeometry(560, 560, 64, 24, 1, true, Math.PI + a0, a1 - a0), skyMat);
-    city.position.set(0, 29, -(COURSE_END + 40)); city.renderOrder = -8; scene.add(city);
+    city.position.set(0, 29, -(COURSE_END + 40)); city.renderOrder = -8; city.layers.enable(REFL); scene.add(city);
   }
   player = new Player(scene, brandTex, envMap);
+  // the light sources, which the reflection camera sees as well
+  for (const o of [street.bulbs, street.lanterns, street.jhalar.mesh, flames.mesh, washes.mesh, fx.points, triangle.group, triangle.flash, player.root, tokenMesh]) o.traverse(c => c.layers.enable(REFL));
+  for (const sl of street.slots) sl.brd.mesh.layers.enable(REFL);
   street.rangoli.mat.uniforms.uFogCol.value.copy(FOG); street.people.mat.uniforms.uFogCol.value.copy(FOG);
   // a child's sparkler: a fizz of tiny white-gold sparks and a hot point of light
   street.onSparkle = (x, y, z) => {
@@ -782,6 +812,11 @@ function update(dt) {
   const vNow = mode === 'play' ? speedAt(run.t) : 0, G = gradePass.uniforms;
   G.uSpeed.value = reducedMotion ? 0 : clamp(clamp((vNow - 11) / 8, 0, 1) * 0.65 + fireBlend * 0.45 + (rushOn && mode === 'play' ? 0.15 : 0), 0, 1);
   G.uFever.value = fireBlend + (goldT < 0.5 ? (1 - goldT / 0.5) * 0.7 : 0); G.uHurt.value = hurtT >= 0 ? 0.75 * Math.exp(-hurtT * 4) : 0;
+  // light shafts from the sky triangle's heart, wherever it is on screen: a hint of them down the gali, growing as
+  // it fills, and full at the strike and over the result
+  const hp = tmp.copy(triangle.heart).project(camera);
+  G.uSun.value.set(hp.x * 0.5 + 0.5, hp.y * 0.5 + 0.5);
+  G.uRays.value = !QUALITY[qi].rays || resting || hp.z > 1 ? 0 : mode === 'finale' || mode === 'result' ? 0.9 : 0.2 + 0.45 * triGlow;
   G.uBlur.value = reducedMotion || qi === 0 ? 0 : clamp((vNow - 12) / 7, 0, 1) * 0.55 + fireBlend * 0.35 + (kickT >= 0 ? Math.exp(-kickT * 4) * 0.6 : 0);
 }
 function revealPrize() {
@@ -954,7 +989,34 @@ function placeCamera(dt, pz) {
   }
 }
 
-function render() { renderer.info.reset(); composer.render(); }
+function render() { renderer.info.reset(); renderReflections(); composer.render(); }
+
+/* ---------------- reflections: the street's lights in the stones ---------------- */
+// Everything that gives off light (bulbs, lanterns, flames and their glow on the walls, the boards, fireworks,
+// the gem and the sky triangle) is also on layer REFL. Each frame a camera mirrored in the ground renders just
+// those into a small target, a planar reflection like three's Reflector at a fraction of the cost, and the
+// ground samples it (world.js): streaked, broken up by the paving and the wet and dry patches.
+function renderReflections() {
+  const q = QUALITY[qi], R = street && street.refl;
+  if (!R) return;
+  if (!q.refl || resting) { R.uReflOn.value = 0; return; }
+  const W = Math.max(64, Math.round(renderer.domElement.width * q.refl)), H = Math.max(64, Math.round(renderer.domElement.height * q.refl));
+  if (!reflRT) reflRT = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType });
+  else if (reflRT.width !== W || reflRT.height !== H) reflRT.setSize(W, H);
+  // the camera mirrored in the plane y = 0
+  camera.updateMatrixWorld(); _rq.extractRotation(camera.matrixWorld);
+  reflCam.position.set(camera.position.x, -camera.position.y, camera.position.z);
+  _rt.set(0, 0, -1).applyMatrix4(_rq).add(camera.position); _rt.y = -_rt.y;
+  reflCam.up.set(0, 1, 0).applyMatrix4(_rq); reflCam.up.y = -reflCam.up.y;
+  reflCam.lookAt(_rt); reflCam.updateMatrixWorld();
+  reflCam.projectionMatrix.copy(camera.projectionMatrix); reflCam.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+  R.uReflMat.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(reflCam.projectionMatrix).multiply(reflCam.matrixWorldInverse);
+  const bg = scene.background, a = renderer.getClearAlpha(); renderer.getClearColor(_cc);
+  scene.background = null; renderer.setRenderTarget(reflRT); renderer.setClearColor(0x000000, 1); renderer.clear();
+  renderer.render(scene, reflCam);
+  renderer.setRenderTarget(null); renderer.setClearColor(_cc, a); scene.background = bg;
+  R.uRefl.value = reflRT.texture; R.uReflOn.value = 1;
+}
 
 addEventListener('resize', () => { camera.aspect = canvas.clientWidth / canvas.clientHeight; camera.updateProjectionMatrix(); buildComposer(); });
 camera.aspect = canvas.clientWidth / canvas.clientHeight; camera.updateProjectionMatrix();
@@ -975,6 +1037,7 @@ if (DEBUG) Object.assign(window.DiyaDash, {
     return { quality: QUALITY[qi].name, avg: +(ts.reduce((s, v) => s + v, 0) / n).toFixed(1), p50: +ts[n >> 1].toFixed(1), p95: +ts[Math.floor(n * 0.95)].toFixed(1), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, programs: renderer.info.programs.length };
   },
   setQuality(name) { qi = Math.max(0, QUALITY.findIndex(q => q.name === name)); buildComposer(); },
+  QUALITY, rebuild() { buildComposer(); },
   passes() { return { bloomPass, gradePass, composer }; }, scene,
   world() { return { street, pools, washes, player, keyLight, camera, fx, triangle, finale, run }; },
   // dev: render one frame and post it to the local dev server for inspection
