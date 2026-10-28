@@ -220,10 +220,22 @@ export class Sound {
     if (!this.running) return; const t = this.ctx.currentTime;
     this.noiseHit(t, 0.38, { f0: 700, f1: 3800, q: 2.2, gain: 0.32, attack: 0.16, pan });
   }
-  // lub-dub, for the last seconds
+  // lub-dub, for the last seconds: the sub you feel on headphones, and a chest knock a phone speaker can play
   heartbeat() {
     if (!this.running) return; const t = this.ctx.currentTime;
     this.thump(t, { f0: 120, f1: 48, dur: 0.22, gain: 0.55, bus: this.sfx }); this.thump(t + 0.17, { f0: 105, f1: 44, dur: 0.24, gain: 0.42, bus: this.sfx });
+    this.thump(t, { f0: 260, f1: 150, dur: 0.09, gain: 0.3, bus: this.sfx }); this.thump(t + 0.17, { f0: 230, f1: 135, dur: 0.09, gain: 0.22, bus: this.sfx });
+    this.noiseHit(t, 0.05, { f0: 420, q: 1.5, gain: 0.12 }); this.noiseHit(t + 0.17, 0.05, { f0: 380, q: 1.5, gain: 0.09 });
+  }
+  // a golden diya: the bright ring of a coin, high partials that beat against each other
+  ching(pan = 0) {
+    if (!this.running) return; const c = this.ctx, t = c.currentTime;
+    for (const [f, g, d] of [[2637, 0.07, 0.5], [3951, 0.05, 0.35], [5274, 0.025, 0.2]]) {
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+      const e = c.createGain(); e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(g, t + 0.004); e.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      let node = e; if (pan && c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = pan; e.connect(p); node = p; }
+      o.connect(e); node.connect(this.sfx); o.start(t); o.stop(t + d + 0.02);
+    }
   }
 
   /* ---------- the player's melody ---------- */

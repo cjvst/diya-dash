@@ -256,6 +256,17 @@ export function makeBoardAtlas(wordmark, triangle, aniso) {
   c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
   return tex(c0, { aniso });
 }
+// The golden diyas' token: the official TOTAL triangle, in its own colours, on a gold coin
+export function makeCoin(tri) {
+  const S = 256, c0 = mk(S, S), c = c0.getContext('2d'), h = S / 2;
+  const rim = c.createLinearGradient(0, 0, S, S); rim.addColorStop(0, '#fff3c0'); rim.addColorStop(0.45, '#e7a92c'); rim.addColorStop(1, '#8a5a10');
+  c.beginPath(); c.arc(h, h, h * 0.98, 0, TAU); c.fillStyle = rim; c.fill();
+  const face = c.createRadialGradient(h * 0.75, h * 0.65, h * 0.05, h, h, h * 0.84); face.addColorStop(0, '#fff6d0'); face.addColorStop(0.5, '#ffcf5a'); face.addColorStop(1, '#c98a1e');
+  c.beginPath(); c.arc(h, h, h * 0.84, 0, TAU); c.fillStyle = face; c.fill();
+  c.lineWidth = 3; c.strokeStyle = 'rgba(120,70,0,.55)'; c.beginPath(); c.arc(h, h, h * 0.76, 0, TAU); c.stroke();
+  const w = S * 0.6, th = (w * tri.height) / tri.width; c.drawImage(tri, h - w / 2, h - th / 2 + 6, w, th);
+  return c0;
+}
 export function recolor(img, color) {
   const c = mk(img.width, img.height), x = c.getContext('2d');
   x.drawImage(img, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, c.width, c.height);
@@ -427,19 +438,23 @@ export function makeBulbTile() {
 }
 
 /* ---------------- target ring: a marigold circle each diya sits on ---------------- */
-// Bright flowers on a pale powder disc with a dark rim: it reads as a target in daylight glare and at night.
+// A ring of marigold heads on a thin wash of rangoli powder with a dark rim. The flowers carry the target, so
+// the powder can stay translucent and the stones show through it: laid on the street, not a sticker over it.
 export function makeRingTexture() {
   const S = 256, c0 = mk(S, S), c = c0.getContext('2d'), r = mulberry32(77), h = S / 2;
   c.translate(h, h);
-  c.beginPath(); c.arc(0, 0, h * 0.96, 0, TAU); c.fillStyle = 'rgba(30,12,4,.55)'; c.fill();           // dark rim for contrast on light stone
-  const g = c.createRadialGradient(0, 0, h * 0.2, 0, 0, h * 0.88);
-  g.addColorStop(0, 'rgba(255,236,190,.95)'); g.addColorStop(0.7, 'rgba(255,214,140,.9)'); g.addColorStop(1, 'rgba(255,190,90,.85)');
+  c.beginPath(); c.arc(0, 0, h * 0.96, 0, TAU); c.fillStyle = 'rgba(30,12,4,.5)'; c.fill();            // dark rim for contrast on light stone
+  const g = c.createRadialGradient(0, 0, h * 0.1, 0, 0, h * 0.88);
+  g.addColorStop(0, 'rgba(255,236,190,.38)'); g.addColorStop(0.6, 'rgba(255,214,140,.55)'); g.addColorStop(1, 'rgba(255,190,90,.8)');
   c.beginPath(); c.arc(0, 0, h * 0.86, 0, TAU); c.fillStyle = g; c.fill();
+  // each marigold: an outer ring of deep petals, an inner ring of lighter ones, a dark heart and a glint
   const flowers = 22;
   for (let i = 0; i < flowers; i++) {
-    const a = (i / flowers) * TAU, x = Math.cos(a) * h * 0.72, y = Math.sin(a) * h * 0.72;
-    for (let p = 0; p < 9; p++) { const pa = (p / 9) * TAU; c.beginPath(); c.ellipse(x + Math.cos(pa) * 7, y + Math.sin(pa) * 7, 7, 4.5, pa, 0, TAU); c.fillStyle = i % 2 ? '#ff7a00' : '#ffb800'; c.fill(); }
-    c.beginPath(); c.arc(x, y, 4.5, 0, TAU); c.fillStyle = '#c24a00'; c.fill();
+    const a = (i / flowers) * TAU, x = Math.cos(a) * h * 0.72, y = Math.sin(a) * h * 0.72, deep = i % 2 ? '#f06a00' : '#f0a000', light = i % 2 ? '#ff9a2a' : '#ffd040';
+    for (let p = 0; p < 10; p++) { const pa = (p / 10) * TAU; c.beginPath(); c.ellipse(x + Math.cos(pa) * 7.5, y + Math.sin(pa) * 7.5, 6.5, 4.2, pa, 0, TAU); c.fillStyle = deep; c.fill(); }
+    for (let p = 0; p < 7; p++) { const pa = (p / 7) * TAU + 0.3; c.beginPath(); c.ellipse(x + Math.cos(pa) * 4, y + Math.sin(pa) * 4, 4.2, 2.8, pa, 0, TAU); c.fillStyle = light; c.fill(); }
+    c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fillStyle = '#9a3200'; c.fill();
+    c.beginPath(); c.arc(x - 2.5, y - 2.5, 1.6, 0, TAU); c.fillStyle = 'rgba(255,248,220,.8)'; c.fill();
   }
   // inner circle of red kumkum dots
   for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU; c.beginPath(); c.arc(Math.cos(a) * h * 0.46, Math.sin(a) * h * 0.46, 5, 0, TAU); c.fillStyle = '#d0202a'; c.fill(); }

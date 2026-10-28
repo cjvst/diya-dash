@@ -6,10 +6,10 @@ export const CONFIG = {
   // Prize tiers, checked top to bottom: the first whose `min` the score reaches wins.
   // `key` names the prize in i18n.js; null means no prize. Calibrated with simulate() (see README).
   TIERS: [
-    { min: 124, key: 'pack' },
-    { min: 102, key: 'sticks3' },
-    { min: 80, key: 'sticks2' },
-    { min: 52, key: 'stick1' },
+    { min: 126, key: 'pack' },
+    { min: 104, key: 'sticks3' },
+    { min: 82, key: 'sticks2' },
+    { min: 53, key: 'stick1' },
     { min: 0, key: null },
   ],
   GOLD_VALUE: 3, // triangles for a golden diya
@@ -74,7 +74,7 @@ export function mulberry32(a) {
 export function buildCourse(seed) {
   const r = mulberry32(seed >>> 0);
   const out = [], hz = [];
-  let s = 22, lastX = 0;
+  let s = 11, lastX = 0;            // the first diya about 1.4 s after GO, while the launch is still fresh
   while (s < RUSH_S - 6) {
     const act = actAt(s), p = s / COURSE_END;
     const sp = [4.6, 4.1, 3.8][act];

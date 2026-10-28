@@ -39,7 +39,7 @@ Light every panel and the official mark appears in the sky. The score is the pla
   - **You play the melody:** every diya lit is a santoor note on the beat, climbing the chord as the streak grows; a golden diya strums the chord; a miss is a dead string; a firecracker chokes the music for a beat.
 
   The dhol layers the dholak's recorded skins under a synthesised boom, crack and slap. Santoor and tumbi are plucked-string synthesis, in tune to about a cent. The conch, crackers, fireworks, crowd, street and landing flute are CC0 recordings. Measured offline over a whole run: −15.8 dB RMS, about 1.3 dB louder than before through a phone-speaker band, with the beat and the melody balanced there.
-- **Haptics (Android):** catches tick harder as the streak grows, golds double-tap, every tenth catch rolls, a near miss flicks, a firecracker thumps, On Fire rumbles, the rush surges, and the last five seconds beat like a heart. iPhone browsers have no vibration.
+- **Haptics (Android):** a long pattern (On Fire, the rush, a hit) is never cut short by the next catch's tick. Catches tick harder as the streak grows, golds double-tap, every tenth catch rolls, a near miss flicks, a firecracker thumps, On Fire rumbles, the rush surges, and the last five seconds beat like a heart. iPhone browsers have no vibration.
 - **Camera and controls:**
   - The camera follows the gem half way across, so the gem never touches the screen edge.
   - The full road is about 250 px of thumb travel.
@@ -60,7 +60,7 @@ Light every panel and the official mark appears in the sky. The score is the pla
   - **Clear today**, and setup tips.
 
   Everything is stored on the phone only (`src/stall.js`). The printable promoter sheet is `PROMOTER-SETUP.md`.
-- **Brand in play:** every golden diya carries the official TOTAL triangle, floating and glowing above its flame.
+- **Brand in play:** every golden diya carries the official TOTAL triangle on a gold coin, floating and glowing above its flame (on a coin, in its own colours, so it never reads as a second player gem in the rush's golden lanes). The sky's wordmark appears as the gem comes out into the chowk.
 - **Life in the street:** silhouetted customers and shopkeepers in the lit shop fronts, families at their doors, and children waving real sparklers.
 - **Battery and heat:** after 15 s untouched on the start screen, and once a prize is shown, the game draws at half rate and lower resolution. A touch wakes it.
 - **First open:** the short sounds load first and the start screen shows; the crowd and crackers load behind it. The score is made in the game, so there is no music file: audio is 0.97 MB.
@@ -81,20 +81,20 @@ then open `http://localhost:8000/`. After the first visit it works offline (`sw.
 ## Prize tiers — edit in `src/rules.js`, `CONFIG.TIERS`
 | TOTAL (diyas lit) | Prize |
 | --- | --- |
-| 124+ | 1 pack |
-| 102+ | 3 sticks |
-| 80+ | 2 sticks |
-| 52+ | 1 stick |
-| below 52 | Happy Diwali (no prize) |
+| 126+ | 1 pack |
+| 104+ | 3 sticks |
+| 82+ | 2 sticks |
+| 53+ | 1 stick |
+| below 53 | Happy Diwali (no prize) |
 
 Calibration: 300 bot runs per skill level, same rules as the game. The bot dodges firecrackers when it sees them.
 
 - A run offers about 66 diyas and about 10 firecrackers. On Fire doubles points, so scores run well past the triangle's 64 panels; a decent run fills the triangle and reveals the mark.
 - A player who never moves scores about 23 and wins nothing.
-- A casual player (goes for 45% of diyas) has a median of 69: mostly 1 stick, about one in eight wins nothing.
-- A good player (75%) has a median of 111: mostly 3 sticks, about a fifth win the pack.
+- A casual player (goes for 45% of diyas) has a median of 70: mostly 1 stick, about one in seven wins nothing.
+- A good player (75%) has a median of 113: mostly 3 sticks, about one in six wins the pack.
 - A near-perfect player wins the pack 94% of the time.
-- (Re-checked 28 Oct 2026 after the rush moved onto a bar line of the music; tiers went up by 2 to keep the same prize economics.)
+- (Re-checked 28 Oct 2026 after the rush moved onto a bar line of the music and the first diya came forward to 1.4 s after GO; the tiers went up to keep the same prize economics.)
 
 To re-check after changing rules:
 ```

@@ -234,7 +234,7 @@ async function boot() {
   decorDiyas = new DiyaSet(230, tex.diya, brass, { seg: 14 });
   scene.add(gameDiyas.group, decorDiyas.group, flames.mesh, pools.mesh, washes.mesh, rings.mesh);
   rings.mat.uniforms.uFogCol.value.copy(FOG);
-  makeCrackers(); makeTokens(brandTex);
+  makeCrackers(); makeTokens(triImg);
   fx = new FX(scene); fx.setScale(canvas.clientHeight * renderer.getPixelRatio(), camera.fov);
   triangle = new TotalTriangle(scene, SKY_TRI, brandTex, wordWhite);
   // the city on the far horizon, either side of the open ground under the triangle (the middle stays clear
@@ -247,7 +247,7 @@ async function boot() {
   }
   player = new Player(scene, brandTex, envMap);
   // the light sources, which the reflection camera sees as well
-  for (const o of [street.bulbs, street.lanterns, street.jhalar.mesh, flames.mesh, washes.mesh, fx.points, triangle.group, triangle.flash, player.root, tokenMesh]) o.traverse(c => c.layers.enable(REFL));
+  for (const o of [street.bulbs, street.lanterns, street.jhalar.mesh, flames.mesh, washes.mesh, triangle.group, triangle.flash, player.root, tokenMesh]) o.traverse(c => c.layers.enable(REFL));
   for (const sl of street.slots) sl.brd.mesh.layers.enable(REFL);
   street.rangoli.mat.uniforms.uFogCol.value.copy(FOG); street.people.mat.uniforms.uFogCol.value.copy(FOG);
   // a child's sparkler: a fizz of tiny white-gold sparks and a hot point of light
@@ -328,8 +328,10 @@ function goRun() {
   mode = 'play'; modeT = 0; resetFrames();
   for (const el of $('tips').children) el.classList.remove('on');
   // the launch: the lens punches wide, a rush of air and sparks behind the gem as it shoots off the line
-  kickT = 0; sound.play('flame_whoosh', { gain: 1.1, rate: 0.85 }); sound.whoosh(0);
-  { const p = player.flameBase(tmp); fx.sparks(p.x, p.y - 0.3, p.z + 0.4, 30, 1.5); }
+  kickT = 0; goldT = 0; sound.play('flame_whoosh', { gain: 1.1, rate: 0.85 }); sound.whoosh(0);
+  // light bursts out over the stones from under the gem (see launchT), and a fan of sparks kicks out behind it
+  launchT = 0;
+  { const p = player.flameBase(tmp); fx.sparks(p.x, p.y - 0.3, p.z + 0.4, 60, 1.9); }
   $('hintText').textContent = S.hint;
   sound.play('conch');
   sound.beginRun();
@@ -446,10 +448,10 @@ const hooks = {
     if (hit) {
       d.litAt = clock;
       const z = -d.s, pan = clamp(d.x / 2.5, -1, 1) * 0.7, fire = onFire(run);
-      sound.catchNote(run.chain, pan, d.gold, fire); sound.ignite(pan);
+      sound.catchNote(run.chain, pan, d.gold, fire); sound.ignite(pan); if (d.gold) sound.ching(pan);
       buzz(d.gold ? HAPTIC.gold : fire ? HAPTIC.fire : HAPTIC.catch(run.chain));
       fx.sparks(d.x, 0.55 + 0.25, z, d.gold ? 26 : fire ? 22 : 14, d.gold || fire ? 1.4 : 1);
-      popAt(d.x, 1.25, z, `+${pts}`, d.gold ? 'gold' : fire ? 'fire' : '');
+      popScore(d.x, z, pts, d.gold ? 'gold' : fire ? 'fire' : '');
       // one streak per diya (two for a golden one), each carrying its share of the panels earned: more than
       // that and, On Fire, the beams near the camera would cross the road the player is reading
       const ids = []; for (let k = 0; k < pts; k++) ids.push(slotNext++);
@@ -498,12 +500,23 @@ const hooks = {
 // "+3" and "Close! +2" rising from the spot where they were earned
 const popEls = Array.from({ length: 10 }, () => { const el = document.createElement('div'); $('pops').appendChild(el); return el; });
 let popI = 0;
-function popAt(x, y, z, text, cls) {
-  const v = tmp.set(x, y, z).project(camera); if (v.z > 1) return;
-  const el = popEls[popI++ % popEls.length], W = canvas.clientWidth, H = canvas.clientHeight;
+function popAt(x, y, z, text, cls, reuse) {
+  const v = tmp.set(x, y, z).project(camera); if (v.z > 1) return reuse;
+  const el = reuse || popEls[popI++ % popEls.length], W = canvas.clientWidth, H = canvas.clientHeight;
   el.textContent = text; el.className = cls || '';
   el.style.left = `${((v.x + 1) / 2) * W}px`; el.style.top = `${((1 - v.y) / 2) * H}px`;
   void el.offsetWidth; el.className = `${cls || ''} go`;
+  return el;
+}
+// Catches in quick succession add up in one rising number, "+7", bumping with each catch, instead of piling up
+// into "+1+1+1" over the lane; a golden diya colours it gold for the rest of the run of catches.
+let popRun = null;
+function popScore(x, z, pts, cls) {
+  if (popRun && clock - popRun.at < 0.5) { popRun.pts += pts; popRun.cls = cls === 'gold' || popRun.cls === 'gold' ? 'gold' : cls || popRun.cls; }
+  else popRun = { pts, cls, el: null };
+  popRun.at = clock;
+  // the same element all the way through a run of catches: it jumps to the latest catch and starts rising again
+  popRun.el = popAt(x, 1.25, z, `+${popRun.pts}`, popRun.cls, popRun.el);
 }
 // the combo shows from three in a row; a broken streak shakes off the screen
 function showCombo(up) {
@@ -514,7 +527,7 @@ function showCombo(up) {
   } else if (!up && c.classList.contains('on')) { c.className = 'combo drop'; }
 }
 let fireT = -1, hurtT = -1, kickT = -1, rushCue = false, rushOn = false, dodgeShown = false, fireBlend = 0;
-let pulseT = 9, cheerT = 9, goldT = 9;
+let pulseT = 9, cheerT = 9, goldT = 9, launchT = -1;
 const waves = [];
 function updateScore(reset) {
   const el = $('score'); el.textContent = run.score;
@@ -565,7 +578,15 @@ const keys = {};
 addEventListener('keydown', e => { keys[e.key] = true; if (e.key === ' ' && mode === 'attract') $('btnGo').click(); });
 addEventListener('keyup', e => { keys[e.key] = false; });
 
-function buzz(p) { try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(p); } catch (e) { /* no haptics */ } }
+// navigator.vibrate replaces whatever is playing, so a catch's tick in the rush would cut off the rush's surge:
+// short ticks wait until a long pattern has played out
+let buzzUntil = 0;
+function buzz(p) {
+  const len = Array.isArray(p) ? p.reduce((a, b) => a + b, 0) : p, now = performance.now();
+  if (len < 60 && now < buzzUntil) return;
+  if (len >= 60) buzzUntil = now + len;
+  try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(p); } catch (e) { /* no haptics */ }
+}
 let wake = null;
 async function requestWake() { try { if ('wakeLock' in navigator && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) { /* not allowed */ } }
 function tryFullscreen() { const el = document.documentElement; if (document.fullscreenElement || !el.requestFullscreen || !matchMedia('(pointer: coarse)').matches) return; el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {}); }
@@ -772,10 +793,16 @@ function update(dt) {
   // in the finale the gem itself becomes the comet: it vanishes into it at launch
   const gemA = !showPlayer || mode === 'result' ? 0 : mode === 'finale' && finale.launched ? 1 - clamp((modeT - (finale.impact - FIN.flight)) / 0.12, 0, 1) : 1;
   player.update(dt, clock, mode === 'attract' ? Math.sin(clock * 0.7) * 0.6 : run.x, pz, run.level, flames, pools, gemA, lift);
+  // the launch at GO: a flash of warm light spreading over the stones from under the gem, gone in half a second
+  if (launchT >= 0) {
+    launchT += dt; const k = 1 - launchT / 0.5;
+    if (k <= 0 || mode !== 'play') launchT = -1;
+    else { const p = player.flameBase(tmp); pools.push(p.x, 0.013, p.z, 2.5 + 6 * (1 - k), 1.5 * k * k, 0.95 * k * k, 0.4 * k * k); }
+  }
   // On Fire: the flame burns white-hot and twice the size, and sheds a trail of sparks down the street
   if (fireBlend > 0.02 && gemA > 0) {
     const p = player.flameBase(tmp);
-    flames.push(p.x, p.y + 0.05, p.z, 0.95 * fireBlend, 9.1, 1.45 * fireBlend, clamp(-player.vx * 0.08, -0.7, 0.7));
+    flames.push(p.x, p.y + 0.05, p.z, 0.8 * fireBlend, 9.1, 1.25 * fireBlend, clamp(-player.vx * 0.08, -0.7, 0.7));   // (any bigger and the gem vanishes in it)
     pools.push(p.x, 0.012, p.z, 3.4 * fireBlend, 0.45 * fireBlend, 0.24 * fireBlend, 0.06 * fireBlend);
     for (let k = 0; k < 3; k++) fx.emit(p.x + (Math.random() - 0.5) * 0.4, p.y + Math.random() * 0.5, p.z + 0.1, (Math.random() - 0.5) * 1.5, 0.6 + Math.random() * 1.6, (Math.random() - 0.5) * 1.5, 0.07 + Math.random() * 0.06, 3.6, 2.2, 0.8, 0.35 + Math.random() * 0.3, 1.5, -2, 0);
   }
@@ -802,6 +829,9 @@ function update(dt) {
   street.people.mat.uniforms.uCheer.value = mode === 'play' ? Math.max(fireBlend, rushOn ? 0.75 : 0, cheerT < 2.2 ? 1 - cheerT / 2.2 : 0) : mode === 'finale' || mode === 'result' ? 1 : 0;
   street.people.mat.uniforms.uPlayerZ.value = player.root.position.z;
   triGlow += (triangle.litCount() / PANELS - triGlow) * Math.min(1, dt * 2);
+  // the sky's wordmark appears as the gem comes out into the chowk: down the gali only a fragment of it showed
+  // through the lights at the far end
+  { const k = mode === 'result' ? 1 : mode === 'finale' ? clamp((modeT - 0.3) / 1.2, 0, 1) : 0; triangle.word.visible = k > 0.001; triangle.word.material.opacity = k; }
   triLight.intensity = 0.12 + 0.9 * triGlow;
   // camera
   placeCamera(dt, pz);
@@ -897,14 +927,15 @@ function drawCourse(ps) {
   }
 }
 
-// The brand in the thing players chase hardest: every golden diya carries the official TOTAL triangle, floating
-// and glowing above its flame, turning gently towards the camera (never past side-on, so the mark is never seen
-// mirrored). Caught, it pops up and vanishes into its streak.
+// The brand in the thing players chase hardest: every golden diya carries the official TOTAL triangle on a gold
+// coin, floating and glowing above its flame, turning gently towards the camera (never past side-on, so the mark
+// is never seen mirrored). The coin keeps the mark's own colours and keeps it from reading as a second player
+// gem when the rush's golden lanes put several on screen. Caught, it pops up and vanishes into its streak.
 let tokenMesh;
 const tkM = new THREE.Matrix4(), tkQ = new THREE.Quaternion(), tkS = new THREE.Vector3(), tkP = new THREE.Vector3(), tkE = new THREE.Euler();
-function makeTokens(brandTex) {
-  const W = 0.62, g = new THREE.PlaneGeometry(W, (W * 123) / 208);
-  const m = new THREE.MeshBasicMaterial({ map: brandTex, color: new THREE.Color(1.35, 1.35, 1.35), transparent: true, alphaTest: 0.4, side: THREE.DoubleSide, fog: false });
+function makeTokens(triImg) {
+  const W = 0.6, g = new THREE.PlaneGeometry(W, W), coin = new THREE.CanvasTexture(T.makeCoin(triImg)); coin.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.MeshBasicMaterial({ map: coin, color: new THREE.Color(1.25, 1.25, 1.25), transparent: true, alphaTest: 0.4, side: THREE.DoubleSide, fog: false });
   tokenMesh = new THREE.InstancedMesh(g, m, 12); tokenMesh.frustumCulled = false; tokenMesh.count = 0; tokenMesh.renderOrder = 3; scene.add(tokenMesh);
 }
 function drawToken(d, z, n) {
