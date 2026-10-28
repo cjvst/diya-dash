@@ -95,10 +95,13 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 .callout.t-rush { --c1: #ffffff; --c2: #dcefff; --c3: #79b8ff; --c4: #1d57d8; --edge: #04113a; --edge2: #020a24; --glow: rgba(60, 140, 255, .95); --dur: 1.1s; }
 .callout.t-go { --glow: rgba(255, 196, 70, .9); --dur: .85s; }
 .callout > * { position: absolute; left: 0; top: 0; opacity: 0; }
-.co-word { transform: translate(-50%, -50%); white-space: nowrap; font: italic 900 var(--fs)/1 var(--f-call); letter-spacing: .01em; text-transform: uppercase;
+/* (the fills are backgrounds clipped to the letters, and a background stops at its box; an italic leans out past
+   the right of its box, so every metallic layer carries padding wide enough for the lean, or the last letter's top
+   right shows only the dark rim) */
+.co-word { transform: translate(-50%, -50%); white-space: nowrap; padding: .1em .24em; font: italic 900 var(--fs)/1 var(--f-call); letter-spacing: .01em; text-transform: uppercase;
   color: var(--edge); -webkit-text-stroke: 7px var(--edge); paint-order: stroke fill;
   text-shadow: 0 2px 0 var(--edge), 0 3px 0 var(--edge), 0 4px 0 var(--edge2), 0 5px 0 var(--edge2), 0 7px 10px rgba(0, 0, 0, .45); }
-.co-word::after { content: attr(data-t); position: absolute; left: 0; top: 0; -webkit-text-stroke: 0; text-shadow: none; color: transparent;
+.co-word::after { content: attr(data-t); position: absolute; left: 0; top: 0; padding: inherit; -webkit-text-stroke: 0; text-shadow: none; color: transparent;
   background: linear-gradient(104deg, transparent 40%, rgba(255, 255, 255, .95) 49%, transparent 58%) no-repeat,
     linear-gradient(180deg, var(--c1) 6%, var(--c2) 38%, var(--c3) 56%, var(--c4) 84%, var(--c3) 100%);
   background-size: 320% 100%, 100% 100%; background-position: 135% 0, 0 0; -webkit-background-clip: text; background-clip: text; }
@@ -138,9 +141,9 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 @keyframes coSpark { 0% { opacity: 1; transform: rotate(var(--a)) translateY(14px) scaleY(1.5); } 100% { opacity: 0; transform: rotate(var(--a)) translateY(var(--r)) scaleY(.2); } }
 @keyframes coJolt { 33% { translate: -3px 2px; } 66% { translate: 3px -1px; } 100% { translate: 0 0; } }
 /* the 3-2-1 and the last five seconds: the same face and fill, in gold, then white-hot and red */
-.count { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); white-space: nowrap; font: italic 900 132px/1 var(--f-call); opacity: 0;
+.count { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); white-space: nowrap; padding: .08em .24em; font: italic 900 132px/1 var(--f-call); opacity: 0;
   color: #2e1000; -webkit-text-stroke: 8px #2e1000; paint-order: stroke fill; text-shadow: 0 3px 0 #2e1000, 0 5px 0 #1c0900, 0 8px 14px rgba(0, 0, 0, .5); }
-.count::after { content: attr(data-t); position: absolute; left: 0; top: 0; -webkit-text-stroke: 0; text-shadow: none; color: transparent;
+.count::after { content: attr(data-t); position: absolute; left: 0; top: 0; padding: inherit; -webkit-text-stroke: 0; text-shadow: none; color: transparent;
   background: linear-gradient(180deg, #fffbe8 6%, #ffe7a0 38%, #ffbf3a 56%, #e5730c 84%, #ffbf3a 100%); -webkit-background-clip: text; background-clip: text; }
 .count.pop { animation: pop .75s ease-out forwards; }
 /* On Fire meter: fills with each catch, turns white-hot and drains while it burns */
@@ -159,9 +162,9 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 .combo.on { opacity: 1; }
 .combo .cn { display: flex; align-items: baseline; transform-origin: 20% 70%; }
 .combo i { font: italic 900 22px/1 var(--f-call); color: var(--gold); margin-right: 1px; -webkit-text-stroke: 5px #1a0c00; paint-order: stroke fill; }
-.combo b { position: relative; font: italic 900 46px/1 var(--f-call); font-variant-numeric: tabular-nums; color: #1a0c00; -webkit-text-stroke: 7px #1a0c00; paint-order: stroke fill;
+.combo b { position: relative; padding: .06em .24em .06em .04em; font: italic 900 46px/1 var(--f-call); font-variant-numeric: tabular-nums; color: #1a0c00; -webkit-text-stroke: 7px #1a0c00; paint-order: stroke fill;
   text-shadow: 0 2px 0 #1a0c00, 0 4px 0 #100700, 0 6px 8px rgba(0, 0, 0, .45); }
-.combo b::after { content: attr(data-t); position: absolute; left: 0; top: 0; -webkit-text-stroke: 0; text-shadow: none; color: transparent;
+.combo b::after { content: attr(data-t); position: absolute; left: 0; top: 0; padding: inherit; -webkit-text-stroke: 0; text-shadow: none; color: transparent;
   background: linear-gradient(180deg, #ffffff 8%, #f3f1ea 40%, #c9c3b4 58%, #fff6dc 100%); -webkit-background-clip: text; background-clip: text; }
 .combo span { font: 800 10px/1 var(--f-body); letter-spacing: .22em; text-transform: uppercase; color: #2a1000; margin: 1px 0 0 6px; padding: 3px 9px 3px 8px;
   transform: skewX(-14deg); background: linear-gradient(90deg, #ffd56a, #ff9e2a); box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }
