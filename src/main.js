@@ -8,6 +8,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { CONFIG, newRun, step, botStep, speedAt, COURSE_END, ACT_STARTS, actAt, tierFor, mulberry32, REACH, ROAD_X, onFire, HIT_R } from './rules.js';
 import * as T from './textures.js';
 import { Street, GHAT_Z, WATER_Y } from './world.js';
+import { anaarGeometry, chakriGeometry } from './props.js';
 import { Flames, Pools, Washes, Rings, DiyaSet } from './diyas.js';
 import { FX } from './fx.js';
 import { TotalTriangle, PANELS } from './triangle.js';
@@ -213,7 +214,8 @@ async function boot() {
   setText();
   progress(0.05);
   const [triImg, wordImg] = await Promise.all([loadImage('assets/brand/total-triangle.png'), loadImage('assets/brand/total-wordmark.png')]);
-  try { await document.fonts.load('600 16px Outfit'); } catch (e) { /* fonts optional */ }
+  // the callouts' face too, so the first "Flame up!" of a run does not come up in a fallback font
+  try { await Promise.all([document.fonts.load('600 16px Outfit'), document.fonts.load('italic 900 48px "Exo 2"')]); } catch (e) { /* fonts optional */ }
   progress(0.15);
   buildComposer();
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
@@ -228,6 +230,7 @@ async function boot() {
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envMap = pmrem.fromEquirectangular(T.makeEnvCanvas()).texture;
   const brass = new THREE.MeshStandardMaterial({ color: 0xd9a03a, metalness: 0.95, roughness: 0.32, envMap, envMapIntensity: 1.0 });
+  tex.env = envMap;
   street = new Street(scene, tex);
   flames = new Flames(700); pools = new Pools(500, tex.pool, tex.paving.map); washes = new Washes(120, tex.pool); rings = new Rings(40, T.makeRingTexture());
   gameDiyas = new DiyaSet(24, tex.diya, brass, { stands: true, standH: 0.52 });
@@ -349,12 +352,28 @@ function startCountdown(seed) {
   $('hud').classList.add('on'); updateScore(true);
 }
 let countShown = 4, lateShown = 0, snapCam = true;
-// One big number in the middle of the screen: the 3-2-1, GO, and the last five seconds.
+// One big number: the 3-2-1 in the middle of the screen, and the last five seconds high over the sky.
 function popCount(text, kind) {
-  const c = $('count'); c.textContent = text; c.className = 'count'; void c.offsetWidth; c.className = `count pop ${kind}`;
-  if (kind === 'fire' || kind === 'rush') { bannerAt = clock; $('badge').classList.remove('on'); }
+  const c = $('count'); c.textContent = text; c.dataset.t = text; c.className = 'count'; void c.offsetWidth; c.className = `count pop ${kind}`;
 }
-let bannerAt = -9;
+// The callouts: the run's words, one at a time (see .callout in index.html). A bigger one is never cut short by
+// a smaller one inside its first 0.75 s. Each has its tier's colours, a kicker over it and a burst behind it.
+const CO_RANK = { l1: 1, l2: 1.5, l3: 2, fire: 2.5, go: 3, rush: 3 };
+const coEl = $('callout'), coWord = $('coWord'), coKick = $('coKick'), coBurst = coEl.querySelector('.co-burst');
+const coSparks = Array.from({ length: 14 }, () => coBurst.appendChild(document.createElement('i')));
+let coAt = -9, coRank = 0;
+function callout(text, tier, kick = '') {
+  if (clock - coAt < 0.75 && CO_RANK[tier] < coRank) return;
+  coAt = clock; coRank = CO_RANK[tier];
+  coWord.textContent = text; coWord.dataset.t = text; coKick.innerHTML = kick;
+  // as big as fits: about 84% of the screen's width at most
+  coEl.style.setProperty('--fs', `${Math.min(56, (canvas.clientWidth * 0.84) / (text.length * 0.66)).toFixed(1)}px`);
+  for (const s of coSparks) {
+    s.style.cssText = `--a:${(Math.random() * 360).toFixed(0)}deg;--r:${(64 + Math.random() * 80).toFixed(0)}px;--l:${(9 + Math.random() * 17).toFixed(0)}px;--dl:${(Math.random() * 0.07).toFixed(2)}s`;
+  }
+  coEl.className = 'callout'; void coEl.offsetWidth; coEl.className = `callout on t-${tier}`;
+}
+const pips = n => [1, 2, 3].map(i => `<b class="pip${i <= n ? ' on' : ''}"></b>`).join('');
 function goRun() {
   mode = 'play'; modeT = 0; resetFrames();
   for (const el of $('tips').children) el.classList.remove('on');
@@ -366,7 +385,7 @@ function goRun() {
   $('hintText').textContent = S.hint;
   sound.play('conch');
   sound.beginRun();
-  popCount(S.go, 'go');
+  callout(S.go, 'go');
   $('hint').classList.add('on'); hintT = 0;
   buzz([20, 40, 20]);
 }
@@ -599,7 +618,7 @@ const hooks = {
   },
   fever(on) {
     if (on) {
-      fireT = 0; popCount(S.fire, 'fire'); flashT = 0.12; kickT = 0;
+      fireT = 0; callout(S.fire, 'fire', S.fireKick); flashT = 0.12; kickT = 0;
       sound.impact(0.7); sound.setFire(true); sound.play('flame_whoosh', { gain: 1.1, rate: 1.2 }); sound.play('firework_3', { gain: 0.6 });
       buzz(HAPTIC.fireOn);
       const p = player.flameBase(tmp); fx.sparks(p.x, p.y, p.z, 40, 1.8);
@@ -631,8 +650,9 @@ function popScore(x, z, pts, cls) {
 function showCombo(up) {
   const c = $('combo');
   if (up && run.chain >= 3) {
-    $('comboN').textContent = run.chain; c.className = `combo on${onFire(run) ? ' hot' : ''}`;
-    void c.offsetWidth; c.classList.add('bump');
+    const n = $('comboN'); n.textContent = run.chain; n.dataset.t = run.chain;
+    c.className = `combo on${onFire(run) ? ' hot' : run.chain >= 10 ? ' warm' : ''}`;
+    void c.offsetWidth; c.classList.add(run.chain % 5 === 0 ? 'mile' : 'bump');
   } else if (!up && c.classList.contains('on')) { c.className = 'combo drop'; }
 }
 let fireT = -1, hurtT = -1, kickT = -1, rushCue = false, rushOn = false, dodgeShown = false, fireBlend = 0;
@@ -643,9 +663,7 @@ function updateScore(reset) {
   if (!reset) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
 }
 function flameBadge(level) {
-  // a big banner (On fire, Final rush) owns the top of the screen for its second
-  const b = $('badge'); if (!S.flame[level] || clock - bannerAt < 1.1) return;
-  b.textContent = S.flame[level]; b.classList.remove('on'); void b.offsetWidth; b.classList.add('on');
+  if (S.flame[level]) callout(S.flame[level], `l${level}`, pips(level));
 }
 
 /* ---------------- input: the gem stays under the finger ---------------- */
@@ -839,7 +857,7 @@ function update(dt) {
     // the final rush: a rising sweep, then the surge, every light in the street up, and golden lanes to the end
     if (!rushCue && run.t >= CONFIG.RUSH_AT - 1.7) { rushCue = true; sound.riser(1.7, 0.26); }
     if (!rushOn && run.t >= CONFIG.RUSH_AT) {
-      rushOn = true; popCount(S.rush, 'rush'); sound.impact(0.85); sound.play('crackers', { gain: 0.8, pan: 0.5 });
+      rushOn = true; callout(S.rush, 'rush', '<img src="assets/brand/total-wordmark.png" alt="TOTAL">'); sound.impact(0.85); sound.play('crackers', { gain: 0.8, pan: 0.5 });
       buzz(HAPTIC.rush); kickT = 0; flashT = 0.1; launchFirework(true); after(0.3, () => launchFirework(true));
     }
     // the last five seconds count down big, high in the sky where they don't hide the diyas, with a heartbeat
@@ -1119,17 +1137,18 @@ function drawToken(d, z, n) {
   return n + 1;
 }
 
-// Firecrackers on the road. An anaar is a clay cone spraying a fountain of white-gold sparks; a chakri is a
-// coil spinning on the ground, throwing coloured sparks round in a wheel. Each sits on a red ring, so it reads
+// Firecrackers on the road. An anaar is a little clay pot with a paper band, spraying a fountain of white-gold
+// sparks from its mouth; a chakri is a striped paper coil spinning flat on the ground, throwing coloured sparks
+// round in a wheel. Each sits on a red ring, so it reads
 // as danger beside the marigold rings of the diyas, and lights the stones round it. Hit one and it is spent.
 let anaarMesh, chakriMesh;
-const crM = new THREE.Matrix4(), crQ = new THREE.Quaternion(), crE = new THREE.Euler(), crS = new THREE.Vector3(1, 1, 1), crP = new THREE.Vector3();
+const crM = new THREE.Matrix4(), crQ = new THREE.Quaternion(), crE = new THREE.Euler(), crS = new THREE.Vector3(1, 1, 1), crS2 = new THREE.Vector3(1.45, 1.3, 1.45), crP = new THREE.Vector3();   // (the chakri a little over life size, to read at speed)
 const CHAKRI_COLS = [[0.6, 3.4, 0.8], [3.6, 2.6, 0.6], [3.6, 0.9, 0.6]];
 function makeCrackers() {
-  const clay = new THREE.MeshStandardMaterial({ color: 0x9a3a1c, roughness: 0.7, emissive: 0x2a0800 });
-  const coil = new THREE.MeshStandardMaterial({ color: 0x2a8a3a, roughness: 0.5, emissive: 0x0a2a10 });
-  anaarMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.17, 0.36, 12), clay, 16);
-  chakriMesh = new THREE.InstancedMesh(new THREE.TorusGeometry(0.15, 0.05, 6, 16), coil, 16);
+  const clay = new THREE.MeshStandardMaterial({ map: T.makeAnaarLabel(), roughness: 0.78, emissive: 0x1a0600 });
+  const coil = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, emissive: 0x0c0a04 });
+  anaarMesh = new THREE.InstancedMesh(anaarGeometry(), clay, 16);
+  chakriMesh = new THREE.InstancedMesh(chakriGeometry(), coil, 16);
   for (const m of [anaarMesh, chakriMesh]) { m.frustumCulled = false; m.count = 0; scene.add(m); }
 }
 function drawCrackers(ps) {
@@ -1139,8 +1158,8 @@ function drawCrackers(ps) {
     if (ahead > 70) break;
     if (ahead < -8 || (h.hit && clock - h.at > 0.05)) continue;
     const z = -h.s, pulse = 0.5 + 0.5 * Math.sin(clock * 9 + i);
-    if (h.kind) { crM.compose(crP.set(h.x, 0.18, z), crQ.identity(), crS); anaarMesh.setMatrixAt(na++, crM); }
-    else { crM.compose(crP.set(h.x, 0.06, z), crQ.setFromEuler(crE.set(Math.PI / 2, 0, clock * 22)), crS); chakriMesh.setMatrixAt(nc++, crM); }
+    if (h.kind) { crM.compose(crP.set(h.x, 0, z), crQ.setFromEuler(crE.set(0, i * 1.7, 0)), crS); anaarMesh.setMatrixAt(na++, crM); }
+    else { crM.compose(crP.set(h.x, 0, z), crQ.setFromEuler(crE.set(0, -clock * 22, 0)), crS2); chakriMesh.setMatrixAt(nc++, crM); }
     rings.push(h.x, 0.018, z, 1.5 + 0.12 * pulse, 1.7 + 0.3 * pulse, 0.3, 0.16, 0.95);
     pools.push(h.x, 0.012, z, 3.4, h.kind ? 0.6 : 0.3, h.kind ? 0.42 : 0.55, h.kind ? 0.18 : 0.2);
     flames.push(h.x, h.kind ? 0.4 : 0.12, z, 0.16, i * 3.7, 2.2);
@@ -1246,6 +1265,8 @@ if (DEBUG) Object.assign(window.DiyaDash, {
   QUALITY, rebuild() { buildComposer(); },
   passes() { return { bloomPass, gradePass, composer }; }, scene,
   world() { return { street, pools, washes, player, keyLight, camera, fx, triangle, finale, run, river, coping, scene }; },
+  // show a callout as the game would: 1-3 flame levels, 'fire', 'rush', 'go'
+  say(k) { if (k >= 1 && k <= 3) flameBadge(k); else if (k === 'fire') callout(S.fire, 'fire', S.fireKick); else if (k === 'rush') callout(S.rush, 'rush', '<img src="assets/brand/total-wordmark.png" alt="TOTAL">'); else callout(S.go, 'go'); },
   // dev: render one frame and post it to the local dev server for inspection
   // dev: render a whole run's sound offline (the count-in, a bot's 30 s on the game's own rules with its real
   // catches, misses, firecrackers and On Fire, the finale and the result) and post it as a WAV for measurement

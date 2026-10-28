@@ -184,13 +184,44 @@ function drawFacade(c, e, X, Y, W, H, r, paint, shop, grime, fine, wins) {
       c.fillStyle = 'rgba(255,220,160,.4)'; c.fillRect(ix + 2, yy, iw - 4, 1.5);
       c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(ix + 2, yy + 5, iw - 4, 4);
     }
-    // the glass counter
-    const ch2 = iy + ih - counterY;
-    c.fillStyle = '#2a1c12'; c.fillRect(ix, counterY, iw, ch2);
-    for (let k = 0; k < 22; k++) { c.fillStyle = pick(r, GOODS); c.fillRect(ix + 8 + r() * (iw - 22), counterY + 7 + r() * ch2 * 0.35, 6 + r() * 7, 4 + r() * 4); }
-    c.fillStyle = 'rgba(190,225,235,.16)'; c.fillRect(ix + 4, counterY + 4, iw - 8, ch2 * 0.55);
-    c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(ix + 4, counterY + 2, iw - 8, 1.5);
-    c.fillStyle = '#3e2a1a'; c.fillRect(ix, counterY + ch2 * 0.62, iw, ch2 * 0.38);
+    // The glass counter: a display case of neat rows, trays of round sweets in front and packets standing behind,
+    // under tinted glass with a steel top edge and reflections slanting across it; below, a wooden front of
+    // vertical planks with a brass kick strip.
+    const ch2 = iy + ih - counterY, gh = ch2 * 0.62;
+    // (from its own stream, after spending exactly what the old counter took from the facade's, so every facade
+    // painted after this one stays as it was)
+    for (let k = 0; k < 110; k++) r();
+    const rc = mulberry32(Math.floor(sx * 7 + sy * 13) + 5);
+    c.fillStyle = '#1e140c'; c.fillRect(ix, counterY, iw, gh);
+    for (let px = ix + 6; px < ix + iw - 14;) {                       // packets standing in a row at the back
+      const pw = 7 + rc() * 5, ph = gh * (0.36 + rc() * 0.16), pc = pick(rc, GOODS);
+      c.fillStyle = pc; c.fillRect(px, counterY + gh * 0.58 - ph, pw, ph);
+      c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(px + 1.5, counterY + gh * 0.58 - ph * 0.62, pw - 3, Math.max(1.5, ph * 0.2));
+      c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(px + pw - 1.5, counterY + gh * 0.58 - ph, 1.5, ph);
+      px += pw + 1.5;
+    }
+    for (let tx = ix + 6; tx < ix + iw - 30;) {                       // steel trays of sweets in front
+      const tw = 26 + rc() * 14, sc = pick(rc, ['#f0a830', '#f6e6c4', '#e8762a', '#c0452e', '#f4d06a']);
+      c.fillStyle = '#9a9a96'; c.fillRect(tx, counterY + gh * 0.84, tw, 3);
+      for (let k = 0; k < 2; k++) for (let bx = tx + 3 + k * 2.5; bx < tx + tw - 4; bx += 5.5) {
+        c.fillStyle = sc; c.beginPath(); c.arc(bx, counterY + gh * 0.8 - k * 3.5, 2.6, 0, Math.PI * 2); c.fill();
+        c.fillStyle = 'rgba(255,255,255,.45)'; c.fillRect(bx - 1.2, counterY + gh * 0.8 - k * 3.5 - 1.6, 1.2, 1.2);
+      }
+      tx += tw + 4 + rc() * 5;
+    }
+    c.fillStyle = 'rgba(170,215,230,.14)'; c.fillRect(ix + 2, counterY + 2, iw - 4, gh - 2);           // the glass
+    c.save(); c.beginPath(); c.rect(ix + 2, counterY + 2, iw - 4, gh - 2); c.clip();
+    c.strokeStyle = 'rgba(255,255,255,.22)'; c.lineWidth = 5;
+    for (let k = 0; k < 3; k++) { const x0 = ix + iw * (0.15 + k * 0.32) + rc() * 10; c.beginPath(); c.moveTo(x0, counterY + gh + 4); c.lineTo(x0 + gh * 0.9, counterY - 4); c.stroke(); }
+    c.restore();
+    c.fillStyle = '#c9cbc8'; c.fillRect(ix, counterY, iw, 2.5);                                            // the steel top edge
+    c.fillStyle = 'rgba(255,255,255,.7)'; c.fillRect(ix, counterY, iw, 1);
+    const wy = counterY + gh, wh = ch2 - gh;                                                                 // the wooden front
+    const wg = c.createLinearGradient(0, wy, 0, wy + wh); wg.addColorStop(0, '#5a3a20'); wg.addColorStop(1, '#3a2414');
+    c.fillStyle = wg; c.fillRect(ix, wy, iw, wh);
+    c.fillStyle = 'rgba(0,0,0,.35)'; for (let x = ix + 9; x < ix + iw; x += 9) c.fillRect(x, wy, 1.2, wh);
+    c.fillStyle = 'rgba(255,220,170,.12)'; for (let x = ix + 10; x < ix + iw; x += 9) c.fillRect(x, wy, 1, wh);
+    c.fillStyle = '#b08a3a'; c.fillRect(ix, wy + wh - 3, iw, 3);
     lit(sx + 6, sy + 6, sw - 12, sh - 12, thr, 0.75 + r() * 0.25, r() < 0.4 ? 0.8 : 0.1);
     // rolling shutter pulled half down
     const shut = (0.25 + r() * 0.3) * sh;
@@ -483,6 +514,28 @@ export function makePetalSprites() {
     { kind: 'jasmine', ...sprite(30, 72, 79, jasmine) },
     { kind: 'head', ...sprite(100, 100, 83, head(['#d65400', '#e66a06', '#f2830c', '#f99a14', '#ffae1e', '#ffc23a'])) },
   ];
+}
+// The anaar's skin, wrapped round its lathe (u round it, v up it): fired terracotta, darker where the kiln
+// smoked it, a band of printed festival paper round the belly (red, gold stars, white borders), and the mouth
+// blackened by the fountain.
+export function makeAnaarLabel() {
+  const W = 256, H = 128, c0 = mk(W, H), c = c0.getContext('2d'), r = mulberry32(71);
+  const row = v => (1 - v) * H;
+  const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2a1208'); g.addColorStop(0.12, '#7a3218'); g.addColorStop(0.45, '#b4552a'); g.addColorStop(1, '#8f3f1e');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  for (let k = 0; k < 900; k++) { c.fillStyle = r() < 0.5 ? 'rgba(60,20,8,.25)' : 'rgba(230,150,100,.18)'; c.fillRect(r() * W, r() * H, 2, 2); }
+  const y0 = row(0.52), y1 = row(0.24);
+  c.fillStyle = '#c3121b'; c.fillRect(0, y0, W, y1 - y0);
+  c.fillStyle = '#f7efe0'; c.fillRect(0, y0, W, 3); c.fillRect(0, y1 - 3, W, 3);
+  c.fillStyle = '#ffc21e';
+  for (let x = 8; x < W; x += 21) {
+    const cy = (y0 + y1) / 2 + ((x / 21) % 2 ? -4 : 4);
+    c.beginPath(); for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 - Math.PI / 2, rr = i % 2 ? 2.4 : 6; c.lineTo(x + Math.cos(a) * rr, cy + Math.sin(a) * rr); } c.fill();
+  }
+  c.fillStyle = 'rgba(255,220,120,.9)'; for (let x = 0; x < W; x += 6) c.fillRect(x, y0 + 5, 3, 1.5);
+  const top = c.createLinearGradient(0, 0, 0, row(0.78)); top.addColorStop(0, '#120804'); top.addColorStop(1, 'rgba(18,8,4,0)');
+  c.fillStyle = top; c.fillRect(0, 0, W, row(0.78));
+  return tex(c0, { repeat: true });
 }
 export function recolor(img, color) {
   const c = mk(img.width, img.height), x = c.getContext('2d');

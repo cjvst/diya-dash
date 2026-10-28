@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { mulberry32, actAt, COURSE_END } from './rules.js';
 import { FACADE, BOARD_ROWS, WHITE_UV, SIGN_CELLS, TUBE_CELL } from './textures.js';
+import { Scooters } from './props.js';
 
 export const SEG = 24, SLOTS = 7, AHEAD = 118;
 export const FRONT_X = 3.45;          // house fronts stand this far from the centre line
@@ -74,28 +75,12 @@ class GB {
 
 // A parked scooter, the kind on every gali doorstep: lateral axis x, length along z, nose towards f (+1 or -1).
 const SCOOTER_COLS = ['#b3141a', '#1f4f9c', '#e9e5dc', '#151515', '#2c7a3a', '#7a7a80', '#d07a12'].map(h => new THREE.Color(h));
-function scooter(b, xc, zs, f, body) {
-  const tyre = new THREE.Color('#141414'), dark = new THREE.Color('#2a2622'), chrome = new THREE.Color('#bdbdb6');
-  const Z = (a, c) => [zs + f * a, zs + f * c];
-  b.prismX(xc, 0.2, zs + f * 0.56, 0.2, 0.055, 10, tyre); b.prismX(xc, 0.2, zs - f * 0.56, 0.2, 0.055, 10, tyre);
-  b.prismX(xc, 0.2, zs + f * 0.56, 0.1, 0.06, 8, chrome); b.prismX(xc, 0.2, zs - f * 0.56, 0.1, 0.06, 8, chrome);
-  let [a, c] = Z(-0.28, 0.3); b.box(xc - 0.17, 0.2, a, xc + 0.17, 0.27, c, dark);                // footboard
-  [a, c] = Z(-0.78, -0.1); b.box(xc - 0.25, 0.27, a, xc + 0.25, 0.6, c, body);                   // the rear body
-  [a, c] = Z(-0.74, -0.06); b.box(xc - 0.2, 0.6, a, xc + 0.2, 0.68, c, body.clone().multiplyScalar(1.1));
-  [a, c] = Z(-0.7, -0.14); b.box(xc - 0.17, 0.68, a, xc + 0.17, 0.78, c, dark);                  // the seat
-  [a, c] = Z(0.28, 0.44); b.box(xc - 0.21, 0.2, a, xc + 0.21, 0.95, c, body);                    // the leg shield
-  [a, c] = Z(0.42, 0.74); b.box(xc - 0.1, 0.38, a, xc + 0.1, 0.47, c, body);                     // front mudguard
-  [a, c] = Z(0.33, 0.43); b.box(xc - 0.37, 0.95, a, xc + 0.37, 1.0, c, dark);                    // handlebar
-  [a, c] = Z(0.43, 0.49); b.box(xc - 0.07, 0.8, a, xc + 0.07, 0.9, c, new THREE.Color('#fff2c8')); // headlamp
-  for (const s of [-1, 1]) { [a, c] = Z(0.34, 0.38); b.box(xc + s * 0.3, 1.0, a, xc + s * 0.32, 1.18, c, chrome); b.box(xc + s * 0.26, 1.18, a, xc + s * 0.36, 1.24, c, dark); }
-}
-
 /* ---------- one side of one segment ---------- */
 // side: -1 left, +1 right. All positions are local to the segment (z from 0 down to -SEG).
 function buildSide(side, act, seed, atlas) {
   const r = mulberry32(seed);
   const fp = new GB(WHITE_UV), brd = new GB([0, 0]);
-  const decor = { beads: [], lanterns: [], diyas: [], rangolis: [], lamps: [], jhalars: [], people: [] };
+  const decor = { beads: [], lanterns: [], diyas: [], rangolis: [], lamps: [], jhalars: [], people: [], scooters: [] };
   // the jhalar draw from their own random stream, so adding them leaves the street's layout as it was
   const rj = mulberry32(seed + 7777);
   // and so does the street's built detail: sills, AC units, pipes, kerbs, scooters, signs, packets, litter
@@ -153,6 +138,9 @@ function buildSide(side, act, seed, atlas) {
       if (Math.abs(za - zc) + 0.45 < w / 2) {
         fp.box(X, wn.y + 0.12, za + 0.42, X + inward * 0.34, wn.y + 0.66, za - 0.42, col('#d6d4cc'));
         fp.box(X + inward * 0.34, wn.y + 0.2, za + 0.34, X + inward * 0.35, wn.y + 0.58, za - 0.34, col('#4a4c4c'));
+        // its louvred grille, and the little control panel at one side
+        for (let k = 0; k < 6; k++) fp.box(X + inward * 0.35, wn.y + 0.23 + k * 0.06, za + 0.3, X + inward * 0.37, wn.y + 0.245 + k * 0.06, za - 0.3, col('#a9aba8'));
+        fp.box(X + inward * 0.34, wn.y + 0.5, za - 0.3, X + inward * 0.355, wn.y + 0.6, za - 0.4, col('#2c2e2e'));
         fp.box(X, wn.y + 0.06, za + 0.3, X + inward * 0.36, wn.y + 0.12, za - 0.3, col('#3a3836'));
       }
     }
@@ -189,7 +177,14 @@ function buildSide(side, act, seed, atlas) {
       decor.lanterns.push({ x: X + inward * 0.7, y: FACADE.FLOORS[2] - 0.75, z: zc + (r() - 0.5) * bw * 0.6, kind: (r() * 3) | 0, thr: r() * 0.7, side });
     }
     // water tank on the roof
-    if (r() < 0.35) fp.cyl(X + side * 1.8, h + 0.3, zc + (r() - 0.5) * 2, 0.55, 1.15, 10, col('#1a1a1a'));
+    // (a moulded plastic tank on a brick plinth: two ribs round it and a screw lid on top)
+    if (r() < 0.35) {
+      const tx = X + side * 1.8, tz = zc + (r() - 0.5) * 2, tank = col('#1a1a1a');
+      fp.box(tx - 0.62, h, tz - 0.62, tx + 0.62, h + 0.3, tz + 0.62, col('#6a3a2a'));
+      fp.cyl(tx, h + 0.3, tz, 0.55, 1.15, 14, tank);
+      for (const yy of [0.38, 0.8]) fp.cyl(tx, h + 0.3 + yy, tz, 0.575, 0.05, 14, col('#232323'));
+      fp.cyl(tx, h + 1.45, tz, 0.22, 0.09, 10, col('#2a2a2a'));
+    }
     // rice lights along the roofline, and curtains of them hanging down the top floor
     if (rj() < 0.8) jhalar(X + inward * 0.15, h + 0.78, zc, w - 0.3, 0.2, 1);
     if (rj() < (act === 0 ? 0.4 : 0.55)) jhalar(X + inward * 0.16, h + 0.7, zc, w - 0.7, 1.3 + rj() * 1.5, 0);
@@ -274,7 +269,8 @@ function buildSide(side, act, seed, atlas) {
       if (r() < 0.8) { r(); r(); r(); }
       if (act > 0 || r() < 0.6) toran(decor, X + inward * 0.06, 2.72, zc + 0.95, zc - 0.95);
       // a scooter parked beside the doorstep, clear of the rangoli and the step
-      if (rd() < 0.3 && w > 5.6) { const s2 = rd() < 0.5 ? 1 : -1; scooter(fp, X + inward * 0.98, zc + s2 * (2.05 + rd() * 0.5), rd() < 0.5 ? 1 : -1, SCOOTER_COLS[(rd() * SCOOTER_COLS.length) | 0]); }
+      // a scooter parked at the kerb (modelled and instanced: props.js)
+      if (rd() < 0.3 && w > 5.6) { const s2 = rd() < 0.5 ? 1 : -1; decor.scooters.push({ x: X + inward * 0.98, z: zc + s2 * (2.05 + rd() * 0.5), f: rd() < 0.5 ? 1 : -1, col: SCOOTER_COLS[(rd() * SCOOTER_COLS.length) | 0] }); }
     }
     z = z1;
   }
@@ -328,7 +324,7 @@ const JHALAR_THEMES = [
   ['#ffd39a', '#fff0c8', 0], ['#ffc44d', '#ff9a2e', 0], ['#ffd39a', '#ffc44d', 1],
   ['#ff3d7f', '#3fc8ff', 1], ['#ff4b2b', '#3ad06b', 0], ['#b45bff', '#ffd23f', 1],
 ].map(([a, b, run]) => ({ a: col(a), b: col(b), run }));
-const BEADS_PER_SLOT = 560, BULBS_PER_SLOT = 150, LANTERNS_PER_SLOT = 10, RANGOLI_PER_SLOT = 8, WIRES_PER_SLOT = 260, JHALARS_PER_SLOT = 18, PEOPLE_PER_SLOT = 26, FLAGS_PER_SLOT = 48;
+const BEADS_PER_SLOT = 560, BULBS_PER_SLOT = 150, LANTERNS_PER_SLOT = 10, RANGOLI_PER_SLOT = 8, WIRES_PER_SLOT = 260, JHALARS_PER_SLOT = 18, PEOPLE_PER_SLOT = 26, FLAGS_PER_SLOT = 48, SCOOTERS_PER_SLOT = 6;
 // paper flags strung across the street for the festival: saffron, white, green, pink, yellow, blue
 const FLAG_COLS = ['#ff8a1a', '#f2efe6', '#1f9a4a', '#ff4f9a', '#ffd23a', '#2f7cff'].map(col);
 // Lamps that light the house fronts per pixel: the nearest SL_N shop lights, door lamps and curtain lights.
@@ -381,7 +377,19 @@ export class Street {
         .replace('#include <common>', '#include <common>\nvarying vec3 vSLW; varying vec3 vSLN;')
         .replace('#include <project_vertex>', '#include <project_vertex>\n  vSLW = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz; vSLN = objectNormal;');
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', `#include <common>\nuniform float uGlow; uniform vec4 uSLPos[ ${SL_N} ]; uniform vec4 uSLCol[ ${SL_N} ]; varying vec3 vSLW; varying vec3 vSLN;`)
+        .replace('#include <common>', `#include <common>\nuniform float uGlow; uniform vec4 uSLPos[ ${SL_N} ]; uniform vec4 uSLCol[ ${SL_N} ]; varying vec3 vSLW; varying vec3 vSLN;
+          float fH( vec2 p ) { vec3 q = fract( vec3( p.xyx ) * 0.1031 ); q += dot( q, q.yzx + 33.33 ); return fract( ( q.x + q.y ) * q.z ); }
+          float fN( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+            return mix( mix( fH( i ), fH( i + vec2( 1.0, 0.0 ) ), f.x ), mix( fH( i + vec2( 0.0, 1.0 ) ), fH( i + vec2( 1.0, 1.0 ) ), f.x ), f.y ); }`)
+        // The built props (plinths, steps, kerbs, sills and frames, sunshades, AC units, pipes, side walls) carry
+        // no painted texture, only their colour, so on their own they read as clean blocks. They get a surface
+        // made here, fixed to the world: mottled stone and plaster at three scales, rain streaks down the faces,
+        // stone chips in the treads, grime where they meet the street, and the same mottle as relief, so a lamp
+        // raking across a plinth shows its grain. (After the rooms below, which replace the map lookup.)
+        .replace('#include <normal_fragment_maps>', /* glsl */`
+          #ifdef USE_BUMPMAP
+            normal = perturbNormalArb( - vViewPosition, normal, wProp > 0.5 ? vec2( dFdx( pH ), dFdy( pH ) ) * 1.1 : dHdxy_fwd(), faceDirection );
+          #endif`)
         // Rooms behind the glass (a lite take on interior mapping): wherever the window-light map says there is
         // a room or a shop, the painted interior is sampled where it would be seen if it stood back behind the
         // wall, by the view angle: a shop 0.8 m deep, an upstairs room 0.35 m. Past its edge the opening shows
@@ -403,7 +411,16 @@ export class Street {
           #endif
           #ifdef USE_MAP
             diffuseColor *= reveal > 0.5 ? vec4( 0.045, 0.036, 0.03, 1.0 ) : texture2D( map, pUv );   // (dark enough that the wall's relief never ghosts through)
-          #endif`)
+          #endif
+          float wProp = step( abs( vMapUv.x - ${WHITE_UV[0].toFixed(3)} ) + abs( vMapUv.y - ${WHITE_UV[1].toFixed(3)} ), 0.0015 ), pH = 0.0;
+          if ( wProp > 0.5 ) {
+            vec2 pP = abs( vSLN.y ) > 0.5 ? vSLW.xz : abs( vSLN.x ) > 0.5 ? vSLW.zy : vSLW.xy;
+            pH = fN( pP * 3.1 ) * 0.5 + fN( pP * 13.0 ) * 0.32 + fN( pP * 41.0 ) * 0.18;
+            float vert = 1.0 - abs( vSLN.y );
+            float streak = vert * smoothstep( 0.5, 0.95, fN( vec2( pP.x * 16.0, pP.y * 0.7 ) ) ) * 0.22;
+            float chips = ( 1.0 - vert ) * step( 0.93, fH( floor( pP * 55.0 ) ) ) * 0.16;
+            diffuseColor.rgb *= ( 0.76 + 0.42 * pH - streak + chips ) * mix( 1.0, mix( 0.58, 1.0, smoothstep( 0.0, 0.32, vSLW.y ) ), vert );
+          }`)
         .replace('#include <emissivemap_fragment>', /* glsl */`
           #ifdef USE_EMISSIVEMAP
             vec4 emT = emP;
@@ -501,7 +518,7 @@ export class Street {
     this.beads.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(BEADS_PER_SLOT * SLOTS * 3), 3);
     this.bulbs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.05, 0), new THREE.MeshBasicMaterial({ color: 0xffffff }), BULBS_PER_SLOT * SLOTS);
     this.bulbs.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(BULBS_PER_SLOT * SLOTS * 3), 3).setUsage(THREE.DynamicDrawUsage);
-    this.lanterns = new THREE.InstancedMesh(lanternGeometry(), new THREE.MeshBasicMaterial({ color: 0xffffff }), LANTERNS_PER_SLOT * SLOTS);
+    this.lanterns = new THREE.InstancedMesh(lanternGeometry(), new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide }), LANTERNS_PER_SLOT * SLOTS);
     this.lanterns.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(LANTERNS_PER_SLOT * SLOTS * 3), 3).setUsage(THREE.DynamicDrawUsage);
     this.rangoli = makeRangoliMesh(tex.rangoli, RANGOLI_PER_SLOT * SLOTS, this.glow);
     this.jhalar = makeJhalarMesh(tex.bulb, JHALARS_PER_SLOT * SLOTS, this.glow);
@@ -523,6 +540,7 @@ export class Street {
     scene.add(this.wires);
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._v = new THREE.Vector3(); this._s = new THREE.Vector3(1, 1, 1); this._up = new THREE.Vector3(0, 1, 0);
     for (const m of [this.brdMat, this.beads.material, this.flags.material]) this.light(m);
+    this.scooters = new Scooters(scene, SCOOTERS_PER_SLOT * SLOTS, tex.env, m => this.light(m));
   }
 
   // Light a material by the street's lamps, the way the house fronts are lit (instanced meshes included).
@@ -547,7 +565,11 @@ export class Street {
   update(s, time, flames, pools, decorDiyas, washes) {
     this.ground.position.z = -Math.floor(s / 3) * 3;
     const kMin = Math.floor((s - 12) / SEG), kMax = Math.floor((s + AHEAD) / SEG);
-    for (const sl of this.slots) if (sl.k !== -999 && (sl.k < kMin || sl.k > kMax)) { sl.k = -999; sl.grp.visible = false; sl.decorList = []; }
+    this.slots.forEach((sl, i) => {
+      if (sl.k === -999 || (sl.k >= kMin && sl.k <= kMax)) return;
+      sl.k = -999; sl.grp.visible = false; sl.decorList = [];
+      this.scooters.setSlot(i, []);
+    });
     for (let k = kMin; k <= kMax; k++) if (!this.slots.some(sl => sl.k === k)) {
       const idx = this.slots.findIndex(sl => sl.k === -999); if (idx >= 0) this.place(idx, k);
     }
@@ -768,6 +790,8 @@ export class Street {
     }
     for (; Pp < PEnd; Pp++) this.people.hide(Pp);
     this.people.flush();
+    // this slot's scooters, each turned a touch off true
+    this.scooters.setSlot(idx, decs.flatMap(({ v, open }) => v.decor.scooters.map(c => ({ x: c.x + open, z: c.z - s0, f: c.f, col: c.col, yaw: (hash(c.x * 7.1 + c.z * 3.3) - 0.5) * 0.18 }))).slice(0, SCOOTERS_PER_SLOT));
     // this slot's jhalar
     let J = idx * JHALARS_PER_SLOT; const JEnd = J + JHALARS_PER_SLOT;
     for (const { v, open } of decs) for (const j of v.decor.jhalars) { if (J >= JEnd) break; this.jhalar.set(J++, j.x + open, j.y, j.z - s0, j.w, j.len, j.thr, j.seed, j.th, j.roof); }
@@ -810,18 +834,44 @@ export class Street {
   }
 }
 
-// Akash kandil: a paper star lantern with a short tail.
+// Akash kandil: a paper star lantern lit from inside. The star is puffed, not flat: each point rises to a ridge
+// from the tips to a raised centre, front and back, so its facets catch the bulb's light differently. The
+// paper glows brightest at the heart and darkens towards the points (baked into the vertex colours, times
+// each lantern's own colour), and paper tassels hang from its lower points, with the cord it hangs by above.
 function lanternGeometry() {
-  const sh = new THREE.Shape();
-  for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU + Math.PI / 2, rr = i % 2 ? 0.11 : 0.24; const x = Math.cos(a) * rr, y = Math.sin(a) * rr; i ? sh.lineTo(x, y) : sh.moveTo(x, y); }
-  const g = new THREE.ExtrudeGeometry(sh, { depth: 0.14, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.03, bevelSegments: 1 });
-  g.translate(0, 0, -0.07);
-  const tail = new THREE.BoxGeometry(0.02, 0.32, 0.02); tail.translate(0, -0.38, 0);
-  const parts = [g.index ? g.toNonIndexed() : g, tail.toNonIndexed()];
-  const pos = [], nrm = [];
-  for (const p of parts) { pos.push(...p.attributes.position.array); nrm.push(...p.attributes.normal.array); }
+  const pos = [], colr = [], light = new THREE.Vector3(-0.35, 0.55, 0.75).normalize();
+  const n = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
+  const tri = (a, b, c, ka, kb, kc, shade = true) => {
+    e1.subVectors(b, a); e2.subVectors(c, a); n.crossVectors(e1, e2).normalize();
+    const f = shade ? 0.72 + 0.28 * Math.abs(n.dot(light)) : 1;
+    for (const [v, k] of [[a, ka], [b, kb], [c, kc]]) { pos.push(v.x, v.y, v.z); colr.push(k * f, k * f, k * f); }
+  };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const ring = [];
+  for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU + Math.PI / 2, r = i % 2 ? 0.105 : 0.25; ring.push(V(Math.cos(a) * r, Math.sin(a) * r, 0)); }
+  const cf = V(0, 0, 0.12), cb = V(0, 0, -0.12);
+  for (let i = 0; i < 10; i++) {
+    const p0 = ring[i], p1 = ring[(i + 1) % 10], k0 = i % 2 ? 0.82 : 0.5, k1 = (i + 1) % 2 ? 0.82 : 0.5;
+    tri(cf, p0, p1, 1.3, k0, k1);
+    tri(cb, p1, p0, 1.15, k1, k0);
+  }
+  // tassels: two-sided paper strips from the two lower points and a longer one from the bottom
+  const strip = (x, y, len, w, z) => {
+    const a = V(x - w / 2, y, z), b = V(x + w / 2, y, z), c = V(x + w / 2, y - len, z), d = V(x - w / 2, y - len, z);
+    tri(a, d, c, 0.42, 0.1, 0.1, false); tri(a, c, b, 0.42, 0.1, 0.42, false);
+    tri(a, c, d, 0.42, 0.1, 0.1, false); tri(a, b, c, 0.42, 0.42, 0.1, false);
+  };
+  // a fringe of thin strips of varied length along the star's lower edge
+  for (let k = 0; k < 7; k++) {
+    const x = -0.135 + k * 0.045, y = -0.105 - (Math.abs(x) / 0.147) * 0.097, len = 0.24 + 0.2 * Math.abs(Math.sin(k * 2.3 + 0.7));
+    strip(x, y + 0.01, len, 0.013, k % 2 ? 0.008 : -0.008);
+  }
+  // the cord, dark, up from the top point
+  const t = ring[0]; strip(t.x, t.y + 0.4, 0.4, 0.012, 0);
+  for (let k = colr.length - 36; k < colr.length; k++) colr[k] = 0.04;
   const m = new THREE.BufferGeometry();
-  m.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); m.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  m.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); m.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3));
+  m.computeVertexNormals();
   return m;
 }
 

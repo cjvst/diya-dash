@@ -1,6 +1,7 @@
 // On-screen words (English only).
 // The brand works as a word: the score is the player's TOTAL ("TOTAL 82 diyas lit"), the last stretch is the
-// TOTAL rush, a full sky triangle is Totally lit. A handful of places, each one natural English.
+// TOTAL rush, a full sky triangle is Totally lit. A handful of places, each one natural English. Never a word
+// that is another tobacco brand's name (Classic, Gold Flake, Navy Cut, Kings, Lights, Mild and the like).
 export const S = {
   greet: 'Happy Diwali', tagline: 'Light the diyas and win exciting gifts', seconds: 'You have 30 seconds!', go: "Let's GO!",
   hint: 'Drag to move your flame', lit: 'diyas lit', win: 'You win', none: 'Better luck next time',
@@ -8,7 +9,8 @@ export const S = {
   prizes: { pack: '1 Pack', sticks3: '3 Sticks', sticks2: '2 Sticks', stick1: '1 Stick' },
   flame: ['', 'Flame up!', 'Blazing!', 'Mahajyoti!'], loading: 'Lighting the gali', paused: 'Paused', resume: 'Resume', rotate: 'Turn your phone upright to play',
   full: 'Totally lit!',
-  fireMeter: 'Fire', fireOn: 'On fire ×2', fire: 'On fire!', rush: 'TOTAL RUSH!', close: 'Close!', combo: 'combo', dodge: 'Dodge the crackers!',
+  // (the rush's callout is "Rush!" under the TOTAL wordmark itself, so the brand appears as its mark there)
+  fireMeter: 'Fire', fireOn: 'On fire ×2', fire: 'On fire!', fireKick: '×2 points', rush: 'Rush!', close: 'Close!', combo: 'combo', dodge: 'Dodge the crackers!',
   how1: 'Swipe to light the diyas', how2: 'Light many in a row: On Fire ×2', how3: 'Dodge the firecrackers',
   best: n => `Best TOTAL today: ${n} — beat it!`, newBest: 'Best TOTAL today!',
   given: 'Prize given', givenDone: 'Given ✓', stamp: t => `✓ Prize given · ${t}`, stallLabel: c => `Stall ${c}`,
