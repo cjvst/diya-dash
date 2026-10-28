@@ -1,6 +1,12 @@
 # Diya Dash — TOTAL × Happy Diwali
 
-A 30-second mobile web game for TOTAL sampling activations. You carry the TOTAL flame down a gali on Diwali night. An enormous TOTAL triangle hangs in the sky at the far end of the street, in view from the first second. Every diya you sweep through catches fire and sends a streak of light up into one of its 64 panels, so you watch it fill from the tip upward as you play. When the 30 seconds end you sail out of the gali into the open chowk and see the whole of it over the city, with its wordmark and fireworks. Light every panel and the official mark appears. The score is triangles lit.
+A 30-second mobile web game for TOTAL sampling activations. You carry the TOTAL flame down a gali on Diwali night. An enormous TOTAL triangle hangs in the sky at the far end of the street, in view from the first second. Every diya you sweep through catches fire and sends a streak of light up into one of its 64 panels, so you watch it fill from the tip upward as you play. When the 30 seconds end, the finale plays out over about five seconds:
+- The music builds instead of fading, with a dholak roll swelling to a downbeat.
+- The gem sails out of the gali into the open chowk, and its lines of diyas catch fire in a race to the horizon.
+- The gem launches as a comet into the heart of the triangle and strikes it on the downbeat: a conch, drums, a flash, a shockwave across the panels and a camera shake.
+- Fireworks and gold glitter fill the sky, and the final score lands with a thump.
+
+Light every panel and the official mark appears in the sky. The score is triangles lit.
 
 - **Play:** drag anywhere and the TOTAL gem follows your finger 1:1. A streak grows your flame (wider reach, side flames, "Mahajyoti"), and a miss shrinks it. Golden diyas count 3. Three acts: dark gali, bazaar, festival chowk.
 - **Look:** real-time 3D (three.js / WebGL). It is true night, lit only by the street's own lights, which are built for phone screens played outdoors:
@@ -13,6 +19,11 @@ A 30-second mobile web game for TOTAL sampling activations. You carry the TOTAL 
   The houses, shops, lights and fireworks are all built in code. The only image files are the two official brand assets.
 - **Brand:** the official TOTAL triangle and wordmark come from the brand team's *TOTAL Brand Asset* deck (21 Oct 2026). They appear on the player gem, the HUD, the shop boards in the street, the sky triangle and its wordmark, and the first and last screens. The screens follow the brand team's notes to the agency.
 - **Sound:** CC0 recordings (Freesound, Kenney), levelled and mixed live: music on a 130 BPM clock, with tabla and a dholak groove entering act by act. Measured offline: about −15 LUFS, music and effects balanced, no clipping.
+
+## Live link
+**https://cjvst.github.io/diya-dash/** for the team to test on phones. It is hosted on GitHub Pages from the `cjvst/diya-dash` repo. The page tells search engines not to index it, but anyone with the link can open it.
+
+To update it, push to `main`. Pages redeploys in one to three minutes. Phones pick up the new code on their next load; the offline worker re-checks code files every time.
 
 ## Run it
 It is a static site; no build step. Any static host works (GitHub Pages, Netlify, an S3 bucket). Locally:
