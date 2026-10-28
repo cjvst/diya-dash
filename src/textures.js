@@ -368,16 +368,121 @@ export function makeCoinEdge() {
   for (let x = 0; x < 256; x += 4) { c.fillStyle = '#e0e0e0'; c.fillRect(x, 0, 2, 16); c.fillStyle = '#505050'; c.fillRect(x + 2, 0, 2, 16); }
   return c0;
 }
-// A sky lantern: a paper lantern lit from inside, wider at the top, its flame a bright core near the bottom
-export function makeSkyLantern() {
-  const W = 64, H = 88, c0 = mk(W, H), c = c0.getContext('2d');
-  const body = new Path2D(); body.moveTo(10, 8); body.lineTo(54, 8); body.lineTo(46, 74); body.lineTo(18, 74); body.closePath();
-  const g = c.createLinearGradient(0, 8, 0, 74); g.addColorStop(0, 'rgba(255,120,40,.55)'); g.addColorStop(0.6, 'rgba(255,170,70,.85)'); g.addColorStop(1, 'rgba(255,225,150,.95)');
-  c.fillStyle = g; c.fill(body);
-  c.strokeStyle = 'rgba(255,230,180,.6)'; c.lineWidth = 1.5; c.stroke(body);
-  const f = c.createRadialGradient(32, 70, 0, 32, 70, 16); f.addColorStop(0, 'rgba(255,255,235,1)'); f.addColorStop(0.4, 'rgba(255,220,140,.8)'); f.addColorStop(1, 'rgba(255,160,60,0)');
-  c.fillStyle = f; c.fillRect(0, 50, W, 38);
-  return c0;
+// The flowers thrown over a prize, painted once at load: marigold rays (orange and yellow, frilled, pleated),
+// rose petals (velvet crimson, cupped, a rolled edge), jasmine (slender, ivory) and whole marigolds. Each comes
+// in two faces from the same seed: lit, and turned from the light, so a tumbling petal darkens as it turns.
+// Painted at 2x.
+export function makePetalSprites() {
+  const sprite = (w, h, seed, paint) => {
+    const faces = [false, true].map(dark => {
+      const c0 = mk(w, h), c = c0.getContext('2d'); paint(c, w, h, mulberry32(seed));
+      if (dark) { c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(46,8,26,.5)'; c.fillRect(0, 0, w, h); }
+      return c0.toDataURL();
+    });
+    return { lit: faces[0], dark: faces[1], w: w / 2, h: h / 2 };
+  };
+  // A marigold ray's outline: a short narrow claw at the base, flaring into a broad tip whose edge is crimped
+  // into irregular frills, a little lopsided, as no two rays are alike. Centred on x = 0, base at y = 0, tip up.
+  const rayPath = (W, H, r) => {
+    const p = new Path2D(), n = 6 + ((r() * 3) | 0), lean = (r() - 0.5) * W * 0.16;
+    p.moveTo(-W * 0.07, 0);
+    p.bezierCurveTo(-W * 0.12, -H * 0.3, -W * 0.5, -H * 0.52, -W * 0.48 + lean, -H * 0.8);
+    let px = -W * 0.48 + lean, py = -H * 0.8;
+    for (let k = 1; k <= n; k++) {
+      const t = k / n, x = (-0.48 + 0.96 * t) * W + lean * (1 - Math.abs(t - 0.5) * 2) * 0.5, y = -H * (0.8 + 0.18 * Math.sin(t * Math.PI)) + (k < n ? (r() - 0.5) * H * 0.07 : 0);
+      const dip = 0.04 + r() * 0.08;
+      p.quadraticCurveTo((px + x) / 2 + (r() - 0.5) * W * 0.05, Math.min(py, y) - H * dip, x, y);
+      px = x; py = y;
+    }
+    p.bezierCurveTo(W * 0.5 + lean, -H * 0.52, W * 0.12, -H * 0.3, W * 0.07, 0);
+    p.closePath();
+    return p;
+  };
+  // pleats: soft dark folds running up from the base, with a light crest beside each, so the ray looks crinkled
+  const pleats = (c, W, H, r, dark, light) => {
+    const n = 5;
+    for (let k = 0; k < n; k++) {
+      const x = (-0.38 + 0.76 * (k + 0.3 + r() * 0.4) / n) * W;
+      for (const [col, dx, wd] of [[dark, 0, 0.05], [light, W * 0.035, 0.03]]) {
+        c.fillStyle = col; c.beginPath(); c.moveTo(dx * 0.2, 0);
+        c.quadraticCurveTo(x * 0.5 + dx, -H * 0.5, x + dx - W * wd, -H); c.lineTo(x + dx + W * wd, -H); c.quadraticCurveTo(x * 0.5 + dx, -H * 0.5, dx * 0.2 + 1, 0); c.fill();
+      }
+    }
+  };
+  const marigold = (base, mid, tip) => (c, w, h, r) => {
+    c.translate(w / 2, h - 2);
+    const W = w * 0.92, H = h * 0.93, p = rayPath(W, H, r);
+    const g = c.createLinearGradient(0, 0, 0, -H); g.addColorStop(0, base); g.addColorStop(0.42, mid); g.addColorStop(1, tip);
+    c.fillStyle = g; c.fill(p);
+    c.save(); c.clip(p);
+    pleats(c, W, H, r, 'rgba(150,40,0,.16)', 'rgba(255,230,150,.12)');
+    const sh = c.createRadialGradient(-W * 0.15, -H * 0.62, 0, -W * 0.15, -H * 0.62, W * 0.55); sh.addColorStop(0, 'rgba(255,250,220,.3)'); sh.addColorStop(1, 'rgba(255,250,220,0)');
+    c.fillStyle = sh; c.fillRect(-W, -H, W * 2, H);
+    const bs = c.createLinearGradient(0, 0, 0, -H * 0.4); bs.addColorStop(0, 'rgba(60,8,0,.45)'); bs.addColorStop(1, 'rgba(60,8,0,0)');
+    c.fillStyle = bs; c.fillRect(-W, -H, W * 2, H);
+    c.restore();
+    c.strokeStyle = 'rgba(255,226,150,.5)'; c.lineWidth = 1.4; c.stroke(p);         // light through the thin frilled edge
+  };
+  // a rose petal: broad, rounded and a little lopsided, deep at the base, velvet, its top edge rolled back
+  const rose = (c, w, h, r) => {
+    const p = new Path2D(), sk = (r() - 0.5) * w * 0.12;
+    p.moveTo(w * 0.5, h - 1);
+    p.bezierCurveTo(w * 0.08, h * 0.8, -w * 0.02 + sk, h * 0.3, w * 0.18 + sk, h * 0.1);
+    p.bezierCurveTo(w * 0.36 + sk, -h * 0.02, w * 0.66 + sk, -h * 0.02, w * 0.84 + sk, h * 0.12);
+    p.bezierCurveTo(w * 1.02, h * 0.32, w * 0.94, h * 0.8, w * 0.5, h - 1); p.closePath();
+    const g = c.createRadialGradient(w / 2, h * 1.05, 2, w / 2, h * 0.85, h * 0.95); g.addColorStop(0, '#45000b'); g.addColorStop(0.45, '#9c1029'); g.addColorStop(0.82, '#cf2440'); g.addColorStop(1, '#e8485e');
+    c.fillStyle = g; c.fill(p);
+    c.save(); c.clip(p);
+    for (let k = 0; k < 320; k++) { c.fillStyle = r() < 0.5 ? 'rgba(0,0,0,.12)' : 'rgba(255,170,180,.09)'; c.fillRect(r() * w, r() * h, 1.2, 1.2); }   // velvet
+    // the rolled edge along the top: a pale crest and the shadow it casts just inside
+    c.lineCap = 'round';
+    c.strokeStyle = 'rgba(70,0,14,.35)'; c.lineWidth = 5; c.beginPath(); c.moveTo(w * 0.16 + sk, h * 0.2); c.bezierCurveTo(w * 0.36 + sk, h * 0.07, w * 0.64 + sk, h * 0.07, w * 0.86 + sk, h * 0.22); c.stroke();
+    c.strokeStyle = 'rgba(255,135,150,.55)'; c.lineWidth = 2.4; c.beginPath(); c.moveTo(w * 0.17 + sk, h * 0.12); c.bezierCurveTo(w * 0.36 + sk, 0, w * 0.64 + sk, 0, w * 0.85 + sk, h * 0.14); c.stroke();
+    const sh = c.createRadialGradient(w * 0.34, h * 0.42, 0, w * 0.34, h * 0.42, w * 0.45); sh.addColorStop(0, 'rgba(255,200,210,.2)'); sh.addColorStop(1, 'rgba(255,200,210,0)');
+    c.fillStyle = sh; c.fillRect(0, 0, w, h);
+    c.restore();
+  };
+  // jasmine: slender and pointed, ivory, cream towards the base, a faint midrib
+  const jasmine = (c, w, h) => {
+    const p = new Path2D();
+    p.moveTo(w / 2, h - 1); p.bezierCurveTo(w * 0.02, h * 0.7, w * 0.16, h * 0.1, w / 2, 1); p.bezierCurveTo(w * 0.84, h * 0.1, w * 0.98, h * 0.7, w / 2, h - 1); p.closePath();
+    const g = c.createLinearGradient(0, h, 0, 0); g.addColorStop(0, '#e2c98a'); g.addColorStop(0.3, '#fbf3df'); g.addColorStop(1, '#ffffff');
+    c.fillStyle = g; c.fill(p);
+    c.save(); c.clip(p);
+    c.strokeStyle = 'rgba(190,170,120,.3)'; c.lineWidth = 1; c.beginPath(); c.moveTo(w / 2, h); c.quadraticCurveTo(w * 0.46, h * 0.5, w / 2, 4); c.stroke();
+    const sd = c.createLinearGradient(w, 0, 0, 0); sd.addColorStop(0, 'rgba(150,130,110,.3)'); sd.addColorStop(0.55, 'rgba(150,130,110,0)'); c.fillStyle = sd; c.fillRect(0, 0, w, h);
+    c.restore();
+  };
+  // A whole marigold, seen from above: rings of frilled rays, each a little shadow under its edge, deep orange
+  // at the rim and brighter towards the heart, which is a dense tuft of small rays; lit from the upper left.
+  const head = (cols) => (c, w, h, r) => {
+    const cx = w / 2, cy = h / 2;
+    const bed = c.createRadialGradient(cx, cy, 0, cx, cy, w * 0.3); bed.addColorStop(0, cols[5]); bed.addColorStop(1, cols[2]);
+    c.fillStyle = bed; c.beginPath(); c.arc(cx, cy, w * 0.3, 0, 6.283); c.fill();
+    for (let ring = 0; ring < 7; ring++) {
+      const R = w * (0.44 - ring * 0.058), n = 17 - ring * 2, col = cols[Math.min(ring, cols.length - 1)];
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * 6.283 + ring * 0.41 + (r() - 0.5) * 0.2, len = R * (0.62 + r() * 0.12), wid = len * (0.85 + r() * 0.2);
+        const path = rayPath(wid, len, r);
+        c.save(); c.translate(cx + Math.cos(a) * R * 0.3, cy + Math.sin(a) * R * 0.3); c.rotate(a + Math.PI / 2);
+        c.save(); c.translate(1.5, 1.5); c.fillStyle = 'rgba(70,14,0,.4)'; c.fill(path); c.restore();
+        const g = c.createLinearGradient(0, 0, 0, -len); g.addColorStop(0, shade(col, 0.7)); g.addColorStop(1, col);
+        c.fillStyle = g; c.fill(path);
+        c.strokeStyle = 'rgba(255,225,150,.35)'; c.lineWidth = 1; c.stroke(path);
+        c.restore();
+      }
+    }
+    const g = c.createRadialGradient(cx - w * 0.14, cy - h * 0.16, 0, cx, cy, w * 0.52); g.addColorStop(0, 'rgba(255,250,215,.3)'); g.addColorStop(0.55, 'rgba(255,240,200,0)'); g.addColorStop(1, 'rgba(60,10,0,.4)');
+    c.globalCompositeOperation = 'source-atop'; c.fillStyle = g; c.fillRect(0, 0, w, h); c.globalCompositeOperation = 'source-over';
+  };
+  return [
+    { kind: 'marigold', ...sprite(56, 72, 61, marigold('#c24600', '#ef7808', '#ffaa1e')) },
+    { kind: 'marigold', ...sprite(56, 72, 67, marigold('#d06600', '#fba516', '#ffd246')) },
+    { kind: 'marigold', ...sprite(56, 72, 71, marigold('#b03a00', '#e45f0a', '#ff9428')) },
+    { kind: 'rose', ...sprite(64, 64, 73, rose) },
+    { kind: 'jasmine', ...sprite(30, 72, 79, jasmine) },
+    { kind: 'head', ...sprite(100, 100, 83, head(['#d65400', '#e66a06', '#f2830c', '#f99a14', '#ffae1e', '#ffc23a'])) },
+  ];
 }
 export function recolor(img, color) {
   const c = mk(img.width, img.height), x = c.getContext('2d');
@@ -450,9 +555,53 @@ function landBand(c, x0, y0, W, h, r, topFade) {
   }
   c.globalAlpha = 1;
 }
-export function makeLandBand() {
-  const W = 1024, H = 160, c0 = mk(W, H), c = c0.getContext('2d');
-  landBand(c, 0, 0, W, H, mulberry32(47), true);
+// The far bank of the river: the riverfront across the water, low houses, trees and a temple or two, dark
+// against the haze, strings of bulbs on the rooftops and the far ghats' diyas in a line along the water. It runs
+// right across the horizon in front of the city's towers, so the city stands on it and meets the water
+// everywhere, and it stays low under the wordmark. 8 px to the metre; the waterline is row WL.
+export function makeFarBank() {
+  const W = 2048, H = 128, WL = 80, c0 = mk(W, H), c = c0.getContext('2d'), r = mulberry32(53);
+  c.clearRect(0, 0, W, H);
+  // the bank's lights in the haze above it, seen between the rooftops
+  const glow = c.createLinearGradient(0, WL - 40, 0, WL); glow.addColorStop(0, 'rgba(110,60,70,0)'); glow.addColorStop(1, 'rgba(160,92,64,.42)');
+  c.fillStyle = glow; c.fillRect(0, WL - 40, W, 40);
+  const bulbs = (x0, w, y) => { for (let k = 2; k < w - 2; k += 4) { c.fillStyle = pick(r, ['#ffcf6a', '#ff7a3a', '#ff5fa2', '#ffe2a8']); c.globalAlpha = 0.65 + r() * 0.35; c.fillRect(x0 + k, y + Math.sin(k * 0.45) * 1.2, 2, 2); } c.globalAlpha = 1; };
+  let x = 0;
+  while (x < W) {
+    const kind = r();
+    if (kind < 0.1) {                      // a temple: a curved shikhara on a plinth, a saffron flag, lit along its edges
+      const w = 22 + r() * 14, h = 46 + r() * 20;
+      c.fillStyle = '#0c0917'; c.fillRect(x, WL - h * 0.42, w, h * 0.42 + 2);
+      const spire = new Path2D(); spire.moveTo(x + w * 0.12, WL - h * 0.42); spire.quadraticCurveTo(x + w * 0.16, WL - h * 0.93, x + w * 0.5, WL - h);
+      spire.quadraticCurveTo(x + w * 0.84, WL - h * 0.93, x + w * 0.88, WL - h * 0.42); spire.closePath(); c.fill(spire);
+      c.fillRect(x + w * 0.5 - 0.6, WL - h - 8, 1.2, 8);
+      c.fillStyle = '#d0661e'; c.beginPath(); c.moveTo(x + w * 0.5 + 0.6, WL - h - 8); c.lineTo(x + w * 0.5 + 7, WL - h - 6); c.lineTo(x + w * 0.5 + 0.6, WL - h - 4); c.fill();
+      c.strokeStyle = 'rgba(255,200,110,.75)'; c.lineWidth = 1.3; c.setLineDash([1.4, 2.6]); c.stroke(spire); c.setLineDash([]);
+      bulbs(x, w, WL - h * 0.42 + 1);
+      x += w + 2 + r() * 10;
+    } else if (kind < 0.3) {               // trees: a peepal or a neem, a dark mass of leaves
+      const w = 18 + r() * 26, h = 24 + r() * 22;
+      c.fillStyle = '#0a0812';
+      for (let k = 0; k < 7; k++) { c.beginPath(); c.arc(x + w * (0.18 + r() * 0.64), WL - h * (0.45 + r() * 0.38), w * (0.16 + r() * 0.15), 0, 6.283); c.fill(); }
+      c.fillRect(x + w * 0.15, WL - h * 0.5, w * 0.7, h * 0.5 + 2);
+      x += w * 0.75;
+    } else {                               // houses, two to five storeys, a few windows lit
+      const w = 16 + r() * 34, h = 14 + r() * 30;
+      c.fillStyle = pick(r, ['#0d0a18', '#100c1b', '#0b0915', '#120d1c']); c.fillRect(x, WL - h, w + 1, h + 2);
+      if (r() < 0.3) c.fillRect(x + w * 0.25, WL - h - 5, w * 0.3, 5);
+      for (let wy = WL - h + 5; wy < WL - 8; wy += 9) for (let wx = x + 4; wx < x + w - 4; wx += 7) if (r() < 0.24) {
+        c.fillStyle = pick(r, ['#ffb85a', '#ffd08a', '#ff9a40', '#ffe8c0']); c.globalAlpha = 0.45 + r() * 0.45; c.fillRect(wx, wy, 3, 3); c.globalAlpha = 1;
+      }
+      if (r() < 0.45) bulbs(x, w, WL - h + 1);
+      x += w;
+    }
+  }
+  // the ghat steps along the water, and the diyas on them: a line of small warm lights doubled in the river
+  c.fillStyle = '#1b1422'; c.fillRect(0, WL - 7, W, 7);
+  c.fillStyle = '#140f1c'; for (let y = WL - 6; y < WL; y += 2) c.fillRect(0, y, W, 1);
+  for (let k = 0; k < W * 0.6; k++) { c.fillStyle = pick(r, ['#ffd08a', '#ffb85a', '#ffe8c0', '#ff9a40']); c.globalAlpha = 0.55 + r() * 0.45; c.fillRect(r() * W, WL - 2 - r() * 5, 2, 2); }
+  c.globalAlpha = 1;
+  c.fillStyle = '#07060d'; c.fillRect(0, WL, W, H - WL);
   const t = tex(c0, { repeat: true }); t.wrapT = THREE.ClampToEdgeWrapping; return t;
 }
 export function makeSkyline() {
@@ -543,6 +692,24 @@ export function makePeopleAtlas() {
     shape('#151821', () => { c.moveTo(x + 2, 194); c.lineTo(x + 13, 194); c.lineTo(x + 12, 251); c.lineTo(x + 3, 251); });
   };
   const thali = (x, y) => shape('#5c4a2a', () => c.ellipse(x, y, 24, 5.5, 0, 0, TAU));
+  // Painted over each finished figure, inside its outline only: folds running down the cloth, a lighter crest
+  // beside each, and the hems and feet darker. The lamps give the figure its roundness (world.js); this gives
+  // the cloth its weight.
+  const fr = mulberry32(29);
+  const folds = (x0, top) => {
+    c.save(); c.globalCompositeOperation = 'source-atop';
+    c.beginPath(); c.rect(x0 - CW / 2, 0, CW, CH); c.clip();
+    for (let k = 0; k < 9; k++) {
+      const x = x0 - 26 + fr() * 52, y0 = top + fr() * 60, sw = (fr() - 0.5) * 10;
+      c.strokeStyle = 'rgba(0,0,0,.22)'; c.lineWidth = 2 + fr() * 2.5; c.beginPath(); c.moveTo(x, y0); c.quadraticCurveTo(x + sw, (y0 + CH) / 2, x + sw * 1.6, CH); c.stroke();
+      c.strokeStyle = 'rgba(255,240,220,.07)'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x + 3, y0 + 6); c.quadraticCurveTo(x + 3 + sw, (y0 + CH) / 2, x + 3 + sw * 1.6, CH); c.stroke();
+    }
+    const g = c.createLinearGradient(0, CH * 0.72, 0, CH); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.4)');
+    c.fillStyle = g; c.fillRect(x0 - CW / 2, 0, CW, CH);
+    const s = c.createLinearGradient(0, 40, 0, 120); s.addColorStop(0, 'rgba(255,235,210,.08)'); s.addColorStop(1, 'rgba(255,235,210,0)');
+    c.fillStyle = s; c.fillRect(x0 - CW / 2, 0, CW, CH);
+    c.restore();
+  };
   const figures = [
     [() => { headAt(0, 32, 13); kurta('#3a3346'); limb('#3a3346', 10, -20, 60, -25, 102, -24, 138); limb('#3a3346', 10, 20, 60, 25, 102, 24, 138); },
      () => { headAt(0, 32, 13); kurta('#3a3346'); limb('#3a3346', 10, -20, 60, -34, 30, -40, 4); limb('#3a3346', 10, 20, 60, 34, 30, 40, 4); }],
@@ -563,7 +730,8 @@ export function makePeopleAtlas() {
   ];
   figures.forEach((poses, i) => poses.forEach((draw, cheer) => {
     const x0 = (i + cheer * 8) * CW + CW / 2;
-    for (const [pass, dx] of [[true, -2.5], [false, 0]]) { rim = pass; c.save(); c.translate(x0 + dx, 0); draw(); c.restore(); }
+    c.save(); c.translate(x0, 0); draw(); c.restore();
+    folds(x0, i === 5 || i === 6 ? 128 : 62);
     // the thali's little flames stay lit
     if (i === 3) {
       c.fillStyle = '#ffd27a';

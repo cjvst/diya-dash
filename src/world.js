@@ -6,6 +6,11 @@ import { FACADE, BOARD_ROWS, WHITE_UV, SIGN_CELLS, TUBE_CELL } from './textures.
 
 export const SEG = 24, SLOTS = 7, AHEAD = 118;
 export const FRONT_X = 3.45;          // house fronts stand this far from the centre line
+// Past the gali the street opens onto a ghat: a stone platform ending in a coping lined with diyas, and the
+// river, with the city standing on the far bank. The gem comes to rest about 9 m short of the edge. The water
+// lies level with the stones, so one mirror serves both (a lower river needed a second reflection, or its
+// reflections and the stones' slid apart).
+export const GHAT_Z = COURSE_END + 58, WATER_Y = 0;
 const PAINTS = ['#7fa7c9', '#5fb3a8', '#d98f9b', '#d9b25a', '#a9c46a', '#9f8fc4', '#d8d2c4', '#c97a4a', '#8e3b46', '#e2c9a6', '#6c9a8b', '#c9a24a'];
 const AWNINGS = ['#b3141a', '#1f4f9c', '#2c7a3a', '#d07a12', '#6a2a6a', '#c4161c'];
 const TAU = Math.PI * 2;
@@ -436,7 +441,8 @@ export class Street {
     // Diwali morning has one: shining in wet patches, dull in the joints, bright at a glancing angle, and the
     // polished stone of the chowk mirrors the sky triangle.
     this.refl = { uRefl: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uReflOn: { value: 0 } };
-    const refl = this.refl, PLAZA_Z = (COURSE_END + 54).toFixed(1);
+    // the gali ends where the houses step back into the chowk, the first segment past the end of the course
+    const refl = this.refl, OPEN_Z = ((Math.floor((COURSE_END + 6) / SEG) + 1) * SEG).toFixed(1);
     groundMat.onBeforeCompile = sh => {
       Object.assign(sh.uniforms, refl);
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform mat4 uReflMat; varying vec2 vGW; varying vec3 vGWP; varying vec4 vRefl;')
@@ -447,8 +453,9 @@ export class Street {
         float gN( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
           return mix( mix( gH( i ), gH( i + vec2( 1.0, 0.0 ) ), f.x ), mix( gH( i + vec2( 0.0, 1.0 ) ), gH( i + vec2( 1.0, 1.0 ) ), f.x ), f.y ); }`)
         .replace('#include <map_fragment>', `#include <map_fragment>
+        if ( vGW.y < -${GHAT_Z.toFixed(1)} ) discard;                                // the river, past the ghat's edge
         float pavL = dot( diffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );       // the paving itself: dark in the joints
-        float gali = smoothstep( -${PLAZA_Z} - 12.0, -${PLAZA_Z} + 4.0, vGW.y );    // 1 between the houses, 0 out in the chowk
+        float gali = smoothstep( -${OPEN_Z} - 6.0, -${OPEN_Z} + 2.0, vGW.y );      // 1 between the houses, 0 out in the chowk
         diffuseColor.rgb *= 0.7 + 0.4 * gN( vGW * 0.09 ) + 0.16 * ( gN( vGW * 0.41 + 17.0 ) - 0.5 );
         // contact shadow where the stones meet the house fronts and their steps
         diffuseColor.rgb *= mix( 1.0, mix( 0.42, 1.0, smoothstep( 0.0, 1.4, ${FRONT_X.toFixed(2)} - abs( vGW.x ) ) ), gali );`)
@@ -467,7 +474,10 @@ export class Street {
             + ( texture2D( uRefl, ruv + vec2( 0.0, 0.02 * j ) ).rgb + texture2D( uRefl, ruv - vec2( 0.0, 0.02 * j ) ).rgb ) * 0.17;
           float graze = 1.0 - abs( normalize( cameraPosition - vGWP ).y );
           float wet = smoothstep( 0.32, 0.72, gN( vGW * 0.06 + 3.7 ) );
-          float k = ( 0.1 + 0.8 * graze * graze * graze ) * mix( 1.0, 0.35 + 0.65 * wet, gali ) * mix( 1.0, 0.8, gali ) * smoothstep( 0.012, 0.05, pavL );   // (pavL is linear albedo: the joints are near black)
+          // out in the chowk the open stones are damp, with puddles in the hollows: the sky triangle shows in those,
+          // in pieces, not as one great sheet of light across the ground
+          float pud = smoothstep( 0.42, 0.6, gN( vGW * vec2( 0.34, 0.2 ) + 9.1 ) );
+          float k = ( 0.1 + 0.8 * graze * graze * graze ) * mix( 0.14 + 0.95 * pud, ( 0.35 + 0.65 * wet ) * 0.8, gali ) * smoothstep( 0.012, 0.05, pavL );   // (pavL is linear albedo: the joints are near black)
           outgoingLight += r * k;
         }
         #include <opaque_fragment>`);
@@ -498,7 +508,7 @@ export class Street {
     this.people = makePeopleMesh(tex.people, PEOPLE_PER_SLOT * SLOTS, this.glow, this.slPos, this.slCol);
     this.onSparkle = null;                            // (x, y, z, i): a child's sparkler, drawn by the game's sparks
     for (const m of [this.beads, this.bulbs, this.lanterns]) { m.frustumCulled = false; scene.add(m); }
-    scene.add(this.rangoli.mesh, this.jhalar.mesh, this.people.mesh);
+    scene.add(this.rangoli.mesh, this.jhalar.mesh, this.people.mesh, this.people.shadow);
     this.bulbMeta = new Float32Array(BULBS_PER_SLOT * SLOTS * 4).fill(-1);
     this.bulbPhase = new Float32Array(BULBS_PER_SLOT * SLOTS);
     this.lanternMeta = new Float32Array(LANTERNS_PER_SLOT * SLOTS * 4).fill(-1);
@@ -628,7 +638,8 @@ export class Street {
       for (const d of sl.decorList) {
         const dz = z0 + d.z;
         if (-dz < s - 10 || -dz > s + (d.chase === undefined ? 75 : 118)) continue;
-        decorDiyas.add(d.x, d.y, dz, d.yaw, d.chase === undefined ? 1.05 : 1.3, d.f, false, wick);
+        const by = d.float ? d.y + Math.sin(time * 1.3 + d.yaw * 3) * 0.025 : d.y;
+        decorDiyas.add(d.x, by, dz, d.yaw, d.chase === undefined ? 1.05 : 1.3, d.f, false, wick);
         let on, pop = 0;
         if (d.chase === undefined) on = Math.min(1, Math.max(0, (g - d.thr) / 0.05));
         else {
@@ -642,7 +653,7 @@ export class Street {
           // (the chowk's lines burn bigger than a doorstep diya: they are the runway to the triangle)
           const big = d.chase === undefined ? 1 : 1.35;
           flames.push(wick.x, wick.y - 0.01, wick.z, (0.2 + 0.4 * pop) * big * on, d.yaw * 3.1, (1.0 + 1.6 * pop) * (big > 1 ? 1.15 : 1) * on);
-          pools.push(d.x, d.y + 0.005, dz, (2.2 + 2.2 * pop) * big, (0.38 + 0.5 * pop) * big * on, (0.21 + 0.28 * pop) * big * on, (0.07 + 0.08 * pop) * big * on);
+          if (!d.float && !d.lip) pools.push(d.x, d.y + 0.005, dz, (2.2 + 2.2 * pop) * big, (0.38 + 0.5 * pop) * big * on, (0.21 + 0.28 * pop) * big * on, (0.07 + 0.08 * pop) * big * on);
         } else flames.push(wick.x, wick.y - 0.01, wick.z, 0.05, d.yaw * 3.1, 0.12);
       }
     }
@@ -658,7 +669,24 @@ export class Street {
     const decs = [], fpParts = [], brdParts = [];
     // out of the gali, two lines of diyas lead on across the chowk and the open ground to the sky triangle;
     // they wait unlit until the finale sets them alight in a race towards the horizon (chase = where along it)
-    if (beyond) for (let j = 0; j < 8; j++) for (const sx of [-1, 1]) sl.decorList.push({ x: sx * 3.4, y: 0, z: -(j + 0.5) * 3, yaw: rr() * TAU, f: (rr() * 3) | 0, thr: 0, chase: s0 + (j + 0.5) * 3, lit: false });
+    if (beyond) for (let j = 0; j < 8; j++) for (const sx of [-1, 1]) {
+      const zz = s0 + (j + 0.5) * 3, float = zz > GHAT_Z + 0.5;
+      sl.decorList.push({ x: sx * 3.4, y: float ? WATER_Y : 0, z: -(j + 0.5) * 3, yaw: rr() * TAU, f: (rr() * 3) | 0, thr: 0, chase: zz, lit: false, float });
+    }
+    // the ghat's edge: a diya on every slab of the coping, right across, catching from the middle outwards as the
+    // race of fire reaches the water (their light on the stone is the coping's own shader, in main.js)
+    if (beyond && s0 <= GHAT_Z && GHAT_Z < s0 + SEG) {
+      const rl = mulberry32(mod(k * 3001 + 5, 1e9));
+      for (let n = -20; n <= 20; n++) sl.decorList.push({ x: n * 1.1, y: 0.06, z: s0 - (GHAT_Z - 0.1), yaw: rl() * TAU, f: (rl() * 3) | 0, thr: 0, chase: GHAT_Z - 0.2 + Math.abs(n * 1.1), lit: false, lip: true });
+    }
+    // out on the river, more diyas drift, set afloat for the festival, catching as the race of fire reaches them
+    if (beyond && s0 + SEG > GHAT_Z + 2) {
+      const rf = mulberry32(mod(k * 4999 + 11, 1e9));
+      for (let n = 0; n < 22; n++) {
+        const zz = s0 + rf() * SEG, x = (rf() < 0.5 ? -1 : 1) * (4.4 + rf() * rf() * 30), yaw = rf() * TAU, f = (rf() * 3) | 0;
+        if (zz > GHAT_Z + 2.4) sl.decorList.push({ x, y: WATER_Y, z: s0 - zz, yaw, f, thr: 0, chase: zz + Math.abs(x) * 0.4, lit: false, float: true });
+      }
+    }
     if (!plaza) [-1, 1].forEach((side, si) => {
       const vlist = this.variants[act][si];
       const v = vlist[mod(k * 3 + si * 2 + ((rr() * 2) | 0), vlist.length)];
@@ -732,8 +760,9 @@ export class Street {
     if (beyond) {
       const rc = mulberry32(mod(k * 7907 + 3, 1e9));
       for (let n = 0; Pp < PEnd && n < 24; n++) {
-        const sd = n % 2 ? 1 : -1, x = sd * (4.4 + rc() * 2.4), z = -s0 - (Math.floor(n / 2) + rc()) * 2, kind = (rc() * 8) | 0, ph = rc() * 6.28;
-        this.people.set(Pp++, x, z, 0.95 + rc() * 0.15, rc() < 0.5 ? -1 : 1, kind, ph);
+        const sd = n % 2 ? 1 : -1, x = sd * (4.4 + rc() * 2.4), z = -s0 - (Math.floor(n / 2) + rc()) * 2, kind = (rc() * 8) | 0, ph = rc() * 6.28, sc = 0.95 + rc() * 0.15, fl = rc() < 0.5 ? -1 : 1;
+        if (-z > GHAT_Z - 0.8) continue;
+        this.people.set(Pp++, x, z, sc, fl, kind, ph);
         if (kind === 6) sl.sparklers.push({ x: x + 0.36, y: 0.85, z, ph });
       }
     }
@@ -858,8 +887,12 @@ function makeJhalarMesh(bulbTex, cap, glow) {
   };
 }
 
-// People: upright cut-outs from an 8-figure silhouette atlas, always turned to face the camera, swaying a
-// little as people do. Back-lit dark figures, their rim brighter as the street lights up; fogged like the rest.
+// People: impostors from an 8-figure atlas, always turned to face the camera, swaying a little as people do.
+// A flat card read as a cut-out, so each figure is lit as a body: its normal turns from left to right across
+// it, as a body is round, and curves away at every edge of its silhouette (from the slope of the silhouette
+// blurred), so the street's lamps model it like the houses, and a lamp behind it, the shop it stands in front
+// of, or the sky triangle out in the chowk, lights a rim round its outline. A soft contact shadow, running
+// out from the feet towards the street, stands each one on the stones. Fogged like the rest.
 function makePeopleMesh(atlas, cap, glow, slPos, slCol) {
   const plane = new THREE.PlaneGeometry(1, 1); plane.translate(0, 0.5, 0);
   const g = new THREE.InstancedBufferGeometry();
@@ -869,12 +902,15 @@ function makePeopleMesh(atlas, cap, glow, slPos, slCol) {
   g.setAttribute('aA', aA); g.setAttribute('aB', aB); g.instanceCount = cap;
   const mat = new THREE.ShaderMaterial({
     uniforms: { uTex: { value: atlas }, uGlow: glow, uTime: { value: 0 }, uFog: { value: 0.0135 }, uFogCol: { value: new THREE.Color() }, uCheer: { value: 0 }, uPlayerZ: { value: 0 },
-      uSLPos: { value: slPos }, uSLCol: { value: slCol } },
+      uSLPos: { value: slPos }, uSLCol: { value: slCol }, uSky: { value: new THREE.Color(0, 0, 0) }, uFill: { value: new THREE.Color(0, 0, 0) } },
     vertexShader: /* glsl */`
       attribute vec4 aA; attribute vec2 aB;            // x, z, scale, mirror | figure, sway phase
       uniform float uTime, uFog, uCheer, uPlayerZ; varying vec2 vUv; varying float vF; varying vec3 vW;
+      varying float vLx, vFlip, vY; varying vec3 vRight, vTo;
       void main() {
         vec2 to = cameraPosition.xz - aA.xy; vec2 right = normalize(vec2(to.y, -to.x));
+        vLx = position.x; vFlip = aA.w < 0.0 ? -1.0 : 1.0; vY = position.y;
+        vRight = vec3(right.x, 0.0, right.y); vTo = normalize(vec3(to.x, 0.0, to.y));
         float H = 1.7 * aA.z, W = 0.85 * aA.z;
         // the crowd cheers for the player: the stretch of street just ahead of the flame, most of them,
         // arms up (the cheering half of the atlas) and hopping
@@ -888,24 +924,68 @@ function makePeopleMesh(atlas, cap, glow, slPos, slCol) {
         float d = -mv.z; vF = exp(-uFog * uFog * d * d);
       }`,
     fragmentShader: /* glsl */`
-      uniform sampler2D uTex; uniform float uGlow; uniform vec3 uFogCol; varying vec2 vUv; varying float vF; varying vec3 vW;
+      uniform sampler2D uTex; uniform float uGlow; uniform vec3 uFogCol, uSky, uFill; varying vec2 vUv; varying float vF; varying vec3 vW;
+      varying float vLx, vFlip, vY; varying vec3 vRight, vTo;
       uniform vec4 uSLPos[ ${SL_N} ]; uniform vec4 uSLCol[ ${SL_N} ];
       void main() {
         vec4 t = texture2D(uTex, vUv); if (t.a < 0.5) discard;
-        // the street's lamps on the figure, on the side that faces the street (wrapped: clothes are soft)
-        vec3 n = vec3(-sign(vW.x), 0.0, 0.0), acc = vec3(0.0);
+        // the figure's normal: round across its width, curving away at the edges of its silhouette (the slope of
+        // the silhouette two mip levels down, a few texels either side), facing the camera in the middle
+        vec2 dU = vec2(6.0 / 4096.0, 0.0), dV = vec2(0.0, 6.0 / 512.0);
+        float hx = texture2D(uTex, vUv + dU, 2.0).a - texture2D(uTex, vUv - dU, 2.0).a;
+        float hy = texture2D(uTex, vUv + dV, 2.0).a - texture2D(uTex, vUv - dV, 2.0).a;
+        vec2 nxy = clamp(-vec2(hx * vFlip, hy) * 0.95 + vec2(clamp(vLx / 0.3, -1.0, 1.0) * 0.5, 0.0), -0.93, 0.93);
+        float nz = sqrt(max(0.07, 1.0 - dot(nxy, nxy)));
+        vec3 n = normalize(vRight * nxy.x + vec3(0.0, nxy.y, 0.0) + vTo * nz);
+        float edge = pow(1.0 - nz, 2.6);              // only where the surface turns right away: a thin line
+        vec3 acc = vec3(0.0), rim = vec3(0.0);
         for (int i = 0; i < ${SL_N}; i++) {
           vec3 d = uSLPos[i].xyz - vW; float dd = dot(d, d) + 0.05, w = 1.0 - dd * uSLPos[i].w;
           if (w <= 0.0) continue;
-          acc += uSLCol[i].rgb * (w * w / (1.0 + dd * uSLCol[i].w)) * (0.45 + 0.55 * max(dot(n, d * inversesqrt(dd)), 0.0));
+          vec3 L = d * inversesqrt(dd), c = uSLCol[i].rgb * (w * w / (1.0 + dd * uSLCol[i].w));
+          acc += c * (0.16 + 0.84 * max(dot(n, L), 0.0));
+          rim += c * max(dot(L, -vTo), 0.0) * edge;                    // a lamp behind: light round the outline
         }
-        gl_FragColor = vec4(mix(uFogCol, t.rgb * (0.5 + 0.3 * uGlow + acc * 0.9), vF), 1.0);
+        // the sky triangle, far ahead and high: a gold rim on everyone facing back down the street
+        rim += uSky * max(dot(vec3(0.0, 0.42, -0.91), -vTo), 0.0) * edge;
+        float amb = (0.32 + 0.22 * uGlow) * (0.82 + 0.18 * nxy.y) * mix(0.5, 1.0, smoothstep(0.0, 0.45, vY));   // feet sink into shadow
+        // and the diyas at their feet light them from below and in front, warmest low down
+        vec3 fill = uFill * (0.55 + 0.45 * max(dot(n, vTo), 0.0)) * mix(1.35, 0.6, vY);
+        gl_FragColor = vec4(mix(uFogCol, t.rgb * (amb + fill + acc * 1.1) + rim * 1.8, vF), 1.0);
         #include <colorspace_fragment>
       }`,
   });
   const mesh = new THREE.Mesh(g, mat); mesh.frustumCulled = false;
+  // the contact shadows: one flat quad per person, sharing the people's instance data, darkening what is under
+  // it (multiplied in after the pools, so a person standing in a pool of light still stands on its shadow)
+  const flat = new THREE.PlaneGeometry(1, 1); flat.rotateX(-Math.PI / 2);
+  const gs = new THREE.InstancedBufferGeometry();
+  gs.index = flat.index; gs.setAttribute('position', flat.attributes.position); gs.setAttribute('aA', aA); gs.instanceCount = cap;
+  const shadow = new THREE.Mesh(gs, new THREE.ShaderMaterial({
+    uniforms: { uFog: mat.uniforms.uFog },
+    vertexShader: /* glsl */`
+      attribute vec4 aA; uniform float uFog; varying vec2 vQ; varying float vF;
+      void main() {
+        // laid out from the feet towards the middle of the street, away from the lit shop behind
+        float out_ = aA.x > 0.0 ? -1.0 : 1.0, s = aA.z;
+        vQ = vec2(position.x + 0.5, position.z * 2.0);         // 0 at the feet .. 1 at the far end; -1..1 across
+        vec3 p = vec3(aA.x + out_ * (position.x + 0.32) * 1.6 * s, 0.016, aA.y + position.z * 1.3 * s);
+        vec4 mv = viewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
+        float d = -mv.z; vF = exp(-uFog * uFog * d * d);
+      }`,
+    fragmentShader: /* glsl */`
+      varying vec2 vQ; varying float vF;
+      void main() {
+        // a dark core under the feet and a soft tongue running out from it
+        float core = 1.0 - smoothstep(0.05, 0.55, length(vec2((vQ.x - 0.2) * 1.15, vQ.y * 0.85)));
+        float tail = (1.0 - smoothstep(0.1, 1.0, vQ.x)) * (1.0 - smoothstep(0.2, 0.95, abs(vQ.y) * (1.25 - vQ.x * 0.5)));
+        gl_FragColor = vec4(0.0, 0.0, 0.0, clamp(core * 0.72 + tail * 0.3, 0.0, 0.8) * vF);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.ZeroFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+  }));
+  shadow.frustumCulled = false; shadow.renderOrder = 7; shadow.material.side = THREE.DoubleSide;   // (mirrored for the right-hand side)
   return {
-    mesh, mat,
+    mesh, mat, shadow,
     set(i, x, z, s, flip, kind, ph) { A.set([x, z, s, flip], i * 4); B.set([kind, ph], i * 2); },
     hide(i) { A.set([0, 9999, 0, 1], i * 4); },
     flush() { aA.needsUpdate = true; aB.needsUpdate = true; },

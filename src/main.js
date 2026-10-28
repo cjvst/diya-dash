@@ -7,7 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { CONFIG, newRun, step, botStep, speedAt, COURSE_END, ACT_STARTS, actAt, tierFor, mulberry32, REACH, ROAD_X, onFire, HIT_R } from './rules.js';
 import * as T from './textures.js';
-import { Street } from './world.js';
+import { Street, GHAT_Z, WATER_Y } from './world.js';
 import { Flames, Pools, Washes, Rings, DiyaSet } from './diyas.js';
 import { FX } from './fx.js';
 import { TotalTriangle, PANELS } from './triangle.js';
@@ -231,17 +231,15 @@ async function boot() {
   street = new Street(scene, tex);
   flames = new Flames(700); pools = new Pools(500, tex.pool, tex.paving.map); washes = new Washes(120, tex.pool); rings = new Rings(40, T.makeRingTexture());
   gameDiyas = new DiyaSet(24, tex.diya, brass, { stands: true, standH: 0.52 });
-  decorDiyas = new DiyaSet(230, tex.diya, brass, { seg: 14 });
+  decorDiyas = new DiyaSet(340, tex.diya, brass, { seg: 14 });
   scene.add(gameDiyas.group, decorDiyas.group, flames.mesh, pools.mesh, washes.mesh, rings.mesh);
   rings.mat.uniforms.uFogCol.value.copy(FOG);
-  makeCrackers(); makeTokens(triImg, pmrem.fromEquirectangular(T.makeStudioEnv()).texture); makeSkyLanterns();
+  makeCrackers(); makeTokens(triImg, pmrem.fromEquirectangular(T.makeStudioEnv()).texture); makePetals();
   fx = new FX(scene); fx.setScale(canvas.clientHeight * renderer.getPixelRatio(), camera.fov);
   triangle = new TotalTriangle(scene, SKY_TRI, brandTex, wordWhite);
-  // The city on the far horizon, either side of the open ground under the triangle (the middle stays clear for
-  // its tip and the wordmark); hidden by the gali until the player comes out into the chowk. The towers stand
-  // on the city's own ground, a band of haze and street lights that runs from the land line down to 35 m below
-  // it, and a band of the same runs across the middle: the street's ground ends about 150 m out, so its far
-  // edge always overlaps that band and the towers never float over a strip of sky.
+  // The city across the river, either side of the open sky under the triangle (the middle stays clear for its
+  // tip and the wordmark); hidden by the gali until the player comes out into the chowk. Its towers run down
+  // below the waterline, behind the far bank, so they always stand on it.
   const skyTex = T.makeSkyline(); skyTex.repeat.set(2, 1);
   const cityCol = new THREE.Color(0.8, 0.78, 0.85), CZ = -(COURSE_END + 40);
   const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, color: cityCol, transparent: true, fog: false, depthWrite: false, side: THREE.BackSide });
@@ -249,15 +247,17 @@ async function boot() {
     const city = new THREE.Mesh(new THREE.CylinderGeometry(560, 560, 96, 24, 1, true, Math.PI + a0, a1 - a0), skyMat);
     city.position.set(0, 13, CZ); city.renderOrder = -8; city.layers.enable(REFL); scene.add(city);
   }
-  { const landTex = T.makeLandBand(); landTex.repeat.set(0.4, 1);
-    const land = new THREE.Mesh(new THREE.CylinderGeometry(560, 560, 39, 6, 1, true, Math.PI - 0.15, 0.3),
-      new THREE.MeshBasicMaterial({ map: landTex, color: cityCol, transparent: true, fog: false, depthWrite: false, side: THREE.BackSide }));
-    land.position.set(0, -15.5, CZ); land.renderOrder = -8; land.layers.enable(REFL); scene.add(land); }
+  // the far bank, right across in front of the towers (drawn after them), its waterline on the river's level
+  { const bankTex = T.makeFarBank(); bankTex.repeat.set(4, 1);
+    const bank = new THREE.Mesh(new THREE.CylinderGeometry(560, 560, 16, 48, 1, true, Math.PI - 1.25, 2.5),
+      new THREE.MeshBasicMaterial({ map: bankTex, color: cityCol, transparent: true, fog: false, depthWrite: false, side: THREE.BackSide }));
+    bank.position.set(0, 2, CZ); bank.renderOrder = -7; bank.layers.enable(REFL); scene.add(bank); }
+  makeGhat(CZ);
   player = new Player(scene, brandTex, envMap);
   // the light sources, which the reflection camera sees as well
-  for (const o of [street.bulbs, street.lanterns, street.jhalar.mesh, flames.mesh, washes.mesh, triangle.group, triangle.flash, player.root, tokenMesh]) o.traverse(c => c.layers.enable(REFL));
+  for (const o of [street.bulbs, street.lanterns, street.jhalar.mesh, flames.mesh, washes.mesh, triangle.group, triangle.flash, player.root, tokenMesh, fx.points]) o.traverse(c => c.layers.enable(REFL));
   for (const sl of street.slots) sl.brd.mesh.layers.enable(REFL);
-  skyLanterns.mesh.layers.enable(REFL);
+  street.people.mesh.layers.enable(REFL);   // the crowd stands in the wet stones too, blocking the lights behind it
   triangle.word.layers.disable(REFL);   // (mirrored right under itself, the wordmark read as garbled text)
   // one lamp model for the whole street: the shop and door lamps light the diyas, their brass stands (a glint
   // on the metal) and the firecrackers too, not only the house fronts
@@ -325,7 +325,7 @@ function toAttract(first) {
   street.chaseFront = -1e9; flashT = shakeT = -1; glitterUntil = 0;
   resetFrames();                        // judge quality on this screen's frames, not the finale's
   glowTarget = 0.5; if (first) glow = 0.5; slotNext = 0; camS = -4;
-  triangle.reset(); fx.clear(); clearLanterns();
+  triangle.reset(); fx.clear();
   $('hud').classList.remove('on'); $('result').classList.remove('on', 'charge', 'reveal'); clearPetals();
   // a score to beat, for the queue watching at the stall
   const best = stall.best(); $('best').textContent = best > 0 ? S.best(best) : '';
@@ -412,7 +412,7 @@ function launchGem() {
 }
 function strike() {
   finale.struck = true; finale.strikeAt = modeT; flashT = 0; shakeT = 0;
-  triangle.blast(); triangle.celebrate(); releaseLanterns();
+  triangle.blast(); triangle.celebrate();
   // the more of the triangle the player lit, the bigger the show: 4 shells for a few panels, 10 for all of it.
   // The first ones burst at once, high in the sky (the strike set them off); rockets climb in after them.
   const n = 4 + Math.round(6 * triangle.litCount() / PANELS);
@@ -420,53 +420,86 @@ function strike() {
   glitterUntil = clock + 3.4;
   buzz([70, 40, 150]);
 }
-// Fireworks over the chowk, between the camera and the sky triangle, in pairs left and right working
-// outwards: gold and TOTAL blue spheres, rings and willows of slow gold.
-// Sky lanterns: paper lanterns let go across the chowk at the strike, rising slowly round the sky triangle and
-// on behind the result, swaying, their flames flickering, and mirrored in the wet stones. One draw call.
-const LANTERN_N = 56;
-let skyLanterns;
-function makeSkyLanterns() {
-  const q = new THREE.PlaneGeometry(1, 1.375), g = new THREE.InstancedBufferGeometry();
-  g.index = q.index; g.setAttribute('position', q.attributes.position); g.setAttribute('uv', q.attributes.uv);
-  const P = new Float32Array(LANTERN_N * 4).fill(-1), V = new Float32Array(LANTERN_N * 4);
-  const aP = new THREE.InstancedBufferAttribute(P, 4), aV = new THREE.InstancedBufferAttribute(V, 4);
-  g.setAttribute('aP', aP); g.setAttribute('aV', aV); g.instanceCount = LANTERN_N;
-  const tex = new THREE.CanvasTexture(T.makeSkyLantern()); tex.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.ShaderMaterial({
-    uniforms: { uTex: { value: tex }, uTime: { value: 0 } },
+// The ghat and the river. The chowk's stones end in a coping of sandstone slabs, a diya on every one, and past
+// it the river runs out to the far bank where the city stands, so the city meets the land the way a city across
+// a river does: at the waterline, its lights doubled in the water. The water is the street's own reflection
+// (the lights, the triangle, the fireworks, the floating diyas, the far bank) broken by moving ripples: each
+// light becomes a column of dashes near by and a long streak far off, as lights on a river do at night.
+let river = null, coping = null;
+function makeGhat(CZ) {
+  coping = new THREE.Mesh(new THREE.BoxGeometry(170, 0.3, 1.0), new THREE.ShaderMaterial({
+    uniforms: { uFront: { value: -1e9 }, uTime: { value: 0 }, uGhat: { value: GHAT_Z } },
     vertexShader: /* glsl */`
-      attribute vec4 aP; attribute vec4 aV; uniform float uTime; varying vec2 vUv; varying float vA;
-      void main() {
-        float t = uTime - aP.w;
-        vA = aP.w < 0.0 || t < 0.0 ? 0.0 : smoothstep(0.0, 1.0, t) * (1.0 - smoothstep(24.0, 32.0, t)) * (0.8 + 0.2 * sin(uTime * 9.0 + aV.y * 5.0));
-        vec3 c = aP.xyz + vec3(sin(t * 0.55 + aV.y) * 1.3, max(t, 0.0) * aV.x, cos(t * 0.4 + aV.y) * 0.9);
-        vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]), up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
-        gl_Position = projectionMatrix * viewMatrix * vec4(c + (right * position.x + up * position.y) * aV.z, 1.0); vUv = uv;
-      }`,
+      varying vec3 vP; varying vec3 vN;
+      void main() { vec4 w = modelMatrix * vec4(position, 1.0); vP = w.xyz; vN = normal; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: /* glsl */`
-      uniform sampler2D uTex; varying vec2 vUv; varying float vA;
-      void main() { vec4 t = texture2D(uTex, vUv); gl_FragColor = vec4(t.rgb * t.a * vA * 1.7, 1.0);
+      uniform float uFront, uTime, uGhat; varying vec3 vP; varying vec3 vN;
+      float h1(float x) { return fract(sin(x * 127.1) * 43758.5453); }
+      void main() {
+        // one sandstone slab per diya (1.1 m), each a slightly different stone, worn, with dark joints
+        float sx = vP.x / 1.1 + 0.5, id = floor(sx), fx = fract(sx);
+        float grain = h1(floor(vP.x * 23.0) + floor(vP.z * 19.0) * 7.3);
+        vec3 alb = vec3(0.36, 0.26, 0.17) * (0.78 + 0.34 * h1(id)) * (0.9 + 0.2 * grain);
+        float joint = smoothstep(0.0, 0.02, min(fx, 1.0 - fx));
+        // its diya and its neighbours', each lit once the race of fire reaches it, a little pool of light apiece
+        vec3 L = vec3(0.0);
+        for (int k = -1; k <= 1; k++) {
+          float xi = (id + float(k)) * 1.1, on = step(uGhat - 0.2 + abs(xi), uFront);
+          vec3 d = vP - vec3(xi, 0.17, -(uGhat - 0.1));
+          L += on * (0.88 + 0.12 * sin(uTime * 13.0 + xi * 7.0)) / (1.0 + dot(d, d) * 30.0);
+        }
+        float face = vN.y > 0.5 ? 1.0 : 0.55;
+        vec3 col = alb * (vec3(0.03, 0.026, 0.05) + vec3(1.0, 0.56, 0.24) * L * 1.7 * face) * mix(0.3, 1.0, joint);
+        gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
       }`,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-  });
-  const mesh = new THREE.Mesh(g, mat); mesh.frustumCulled = false; mesh.renderOrder = 18; scene.add(mesh);
-  skyLanterns = { mesh, mat, P, V, aP, aV };
+  }));
+  coping.position.set(0, -0.09, -(GHAT_Z - 0.1)); coping.frustumCulled = false; scene.add(coping);
+  const R = street.refl;
+  river = new THREE.Mesh(new THREE.CircleGeometry(550, 96), new THREE.ShaderMaterial({
+    uniforms: { uRefl: R.uRefl, uReflMat: R.uReflMat, uReflOn: R.uReflOn, uTime: { value: 0 }, uFogCol: { value: FOG }, uGhat: { value: GHAT_Z + 0.3 } },
+    vertexShader: /* glsl */`
+      uniform mat4 uReflMat; varying vec3 vW; varying vec4 vRefl;
+      void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vRefl = uReflMat * w; gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: /* glsl */`
+      uniform sampler2D uRefl; uniform float uTime, uGhat, uReflOn; uniform vec3 uFogCol; varying vec3 vW; varying vec4 vRefl;
+      // The waves, a few octaves of drifting noise (round in the water, so on screen, foreshortened, they break a
+      // light into short dashes; stretched across the current they read as stripes), each faded out once its features fall under a few pixels, so the far water never
+      // shimmers: out there the river is a dark mirror of long streaks.
+      float h2(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+      float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + vec2(1.0, 1.0)), f.x), f.y); }
+      float wave(vec2 p, vec2 sc, vec2 fl, float fw) { return (vn(p * sc + fl * uTime) - 0.5) * smoothstep(3.0, 9.0, 1.0 / (sc.y * fw)); }
+      float oct(vec2 p, vec2 k, float sp, float fw) { return sin(dot(p, k) + uTime * sp) * smoothstep(3.0, 9.0, 6.2832 / (length(k) * fw)); }
+      void main() {
+        if (vW.z > -uGhat) discard;
+        vec3 V = normalize(cameraPosition - vW); float g = 1.0 - abs(V.y);
+        vec2 p = vW.xz; float fw = max(fwidth(p.y), 1e-4);
+        // the slopes across the current break each reflection into dashes; those along it sway them a little
+        float sz = wave(p, vec2(0.55, 0.6), vec2(0.15, -0.25), fw) * 1.0 + wave(p, vec2(1.7, 1.9), vec2(0.35, -0.6), fw) * 1.1
+          + wave(p, vec2(3.9, 4.4), vec2(-0.5, 0.9), fw) * 0.8 + wave(p + vec2(31.0, 17.0), vec2(8.1, 9.0), vec2(0.8, -1.5), fw) * 0.5;
+        float sx = oct(p, vec2(0.9, 0.45), 0.8, fw) * 0.6 + oct(p, vec2(2.6, -1.3), 1.9, fw) * 0.4;
+        vec2 ruv = vRefl.xy / vRefl.w + vec2(sx * 0.0022 + sz * 0.001, sz * 0.0025);
+        float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))), j = (0.94 + 0.12 * ign) * (1.0 + 0.3 * sz);
+        vec3 r = texture2D(uRefl, ruv).rgb * 0.2
+          + (texture2D(uRefl, ruv + vec2(0.0, 0.007 * j)).rgb + texture2D(uRefl, ruv - vec2(0.0, 0.007 * j)).rgb) * 0.17
+          + (texture2D(uRefl, ruv + vec2(0.0, 0.018 * j)).rgb + texture2D(uRefl, ruv - vec2(0.0, 0.018 * j)).rgb) * 0.13
+          + (texture2D(uRefl, ruv + vec2(0.0, 0.034 * j)).rgb + texture2D(uRefl, ruv - vec2(0.0, 0.034 * j)).rgb) * 0.1;
+        // the facets tilted to the eye catch the light, the troughs between them are dark
+        r *= uReflOn;                     // (no reflection pass on the lowest quality: never a stale frame)
+        float glint = 0.28 + 1.35 * smoothstep(-0.3, 0.42, sz);
+        float fres = 0.16 + 0.84 * pow(g, 5.0);
+        vec3 col = vec3(0.004, 0.006, 0.015) + r * fres * 1.25 * glint;
+        col += vec3(0.03, 0.022, 0.05) * pow(g, 9.0) * (0.75 + 0.25 * sz);     // the night haze's sheen on the far water
+        float d = length(vW - cameraPosition), f = 1.0 - exp(-pow(d * 0.0021, 2.0));
+        gl_FragColor = vec4(mix(col, uFogCol, f * 0.8), 1.0);
+        #include <colorspace_fragment>
+      }`,
+  }));
+  river.rotation.x = -Math.PI / 2; river.position.set(0, WATER_Y, CZ); river.frustumCulled = false; scene.add(river);
 }
-function releaseLanterns() {
-  const { P, V, aP, aV } = skyLanterns, cz = camera.position.z;
-  for (let i = 0; i < LANTERN_N; i++) {
-    const near = i < 10, side = i % 2 ? 1 : -1;
-    // a few let go close by on either side, the rest out across the chowk towards the triangle, never in the
-    // narrow cone in front of the sky's wordmark (one drifting across it turned TOTAL into TOTAU)
-    const dist = near ? 14 + Math.random() * 16 : 30 + Math.random() * 130;
-    P.set([side * (near ? 5 + Math.random() * 6 : 0.16 * dist + Math.random() * 22), 1.5 + Math.random() * (near ? 2 : 8), cz - dist, clock + i * 0.05 + Math.random() * 0.9], i * 4);
-    V.set([1.3 + Math.random() * 1.3, Math.random() * 6.28, near ? 1.3 + Math.random() * 0.3 : 1.8 + Math.random() * 1.0, 0], i * 4);
-  }
-  aP.needsUpdate = true; aV.needsUpdate = true;
-}
-function clearLanterns() { if (!skyLanterns) return; skyLanterns.P.fill(-1); skyLanterns.aP.needsUpdate = true; }
+// Fireworks over the chowk, between the camera and the sky triangle, in pairs left and right working
+// outwards: gold and TOTAL blue spheres, rings and willows of slow gold.
 function chowkFirework(i, big, now = false) {
   // in pairs, at three spreads either side of the triangle, bursting about its upper half
   const side = i % 2 ? 1 : -1, x = side * (5 + (Math.floor(i / 2) % 3) * 8) + (Math.random() - 0.5) * 4;
@@ -603,8 +636,7 @@ function showCombo(up) {
   } else if (!up && c.classList.contains('on')) { c.className = 'combo drop'; }
 }
 let fireT = -1, hurtT = -1, kickT = -1, rushCue = false, rushOn = false, dodgeShown = false, fireBlend = 0;
-let pulseT = 9, cheerT = 9, goldT = 9, launchT = -1, focusY = -1;
-const hudEl = $('hud');
+let pulseT = 9, cheerT = 9, goldT = 9, launchT = -1;
 const waves = [];
 function updateScore(reset) {
   const el = $('score'); el.textContent = run.score;
@@ -880,12 +912,6 @@ function update(dt) {
   // in the finale the gem itself becomes the comet: it vanishes into it at launch
   const gemA = !showPlayer || mode === 'result' ? 0 : mode === 'finale' && finale.launched ? 1 - clamp((modeT - (finale.impact - FIN.flight)) / 0.12, 0, 1) : 1;
   player.update(dt, clock, mode === 'attract' ? Math.sin(clock * 0.7) * 0.6 : run.x, pz, run.level, flames, pools, gemA, lift);
-  // the strike: a ring of gold light races out across the chowk's stones from under the gem's launch, so the
-  // ground answers the sky
-  if (finale && finale.struck) {
-    const t = modeT - finale.strikeAt;
-    if (t < 1.4) { const k = 1 - t / 1.4; pools.push(player.root.position.x, 0.014, player.root.position.z - 6, 4 + 75 * t, 1.6 * k * k, 1.1 * k * k, 0.45 * k * k); }
-  }
   // the launch at GO: a flash of warm light spreading over the stones from under the gem, gone in half a second
   if (launchT >= 0) {
     launchT += dt; const k = 1 - launchT / 0.5;
@@ -921,6 +947,10 @@ function update(dt) {
   // the crowd: cheering while the player is On Fire or in the rush, and for a moment at each streak milestone
   street.people.mat.uniforms.uCheer.value = mode === 'play' ? Math.max(fireBlend, rushOn ? 0.75 : 0, cheerT < 2.2 ? 1 - cheerT / 2.2 : 0) : mode === 'finale' || mode === 'result' ? 1 : 0;
   street.people.mat.uniforms.uPlayerZ.value = player.root.position.z;
+  // the sky triangle's gold on the crowd's outlines: faint down the gali, full out in the chowk once it is lit
+  const out = mode === 'finale' || mode === 'result';
+  street.people.mat.uniforms.uSky.value.setRGB(1.0, 0.68, 0.32).multiplyScalar(out ? 0.35 + 0.65 * triGlow : 0.12 * triGlow);
+  street.people.mat.uniforms.uFill.value.setRGB(1.0, 0.58, 0.28).multiplyScalar(out ? 0.42 : 0.2 * glow);
   triGlow += (triangle.litCount() / PANELS - triGlow) * Math.min(1, dt * 2);
   // the sky's wordmark appears as the gem comes out into the chowk: down the gali only a fragment of it showed
   // through the lights at the far end
@@ -928,15 +958,8 @@ function update(dt) {
   triLight.intensity = 0.12 + 0.9 * triGlow;
   // camera
   placeCamera(dt, pz);
-  // While playing, the eyes are on the gem and the diya coming at it, and attention falls away radially from
-  // there: the callouts (flame level, On Fire, TOTAL RUSH) sit just under the gem, inside that focus, where
-  // they never cover what is coming. The HUD follows the gem's height on screen through --focus-y.
-  if (mode === 'play') {
-    const gv = tmp.copy(player.root.position).project(camera), gy = Math.round(((1 - gv.y) / 2) * canvas.clientHeight);
-    if (Math.abs(gy - focusY) > 1) { focusY = gy; hudEl.style.setProperty('--focus-y', `${gy}px`); }
-  }
   sky.position.copy(camera.position); stars.position.copy(camera.position); stars.material.uniforms.uTime.value = clock;
-  if (skyLanterns) skyLanterns.mat.uniforms.uTime.value = clock;
+  if (river) { river.material.uniforms.uTime.value = clock; coping.material.uniforms.uTime.value = clock; coping.material.uniforms.uFront.value = street.chaseFront; }
   gradePass.uniforms.uTime.value = clock;
   gradePass.uniforms.uFade.value = fade ? (fade.t < 0.35 ? fade.t / 0.35 : 1 - (fade.t - 0.35) / 0.45) : 0;
   gradePass.uniforms.uFlash.value = flashT >= 0 && !reducedMotion ? 0.42 * Math.exp(-flashT * 7) : 0;
@@ -965,15 +988,30 @@ function revealPrize() {
   // then the music settles under the promoter's voice
   after(3.5, () => sound.settle());
 }
-// Marigold, rose and jasmine petals thrown over a prize. Most fall behind the card; one in six falls close by, in front.
-const PETAL_COLS = ['#ff9f1a', '#ffb627', '#f47b0f', '#ffc93a', '#ff9f1a', '#c8102e', '#e0303f', '#fff6e8'];
+// Flowers thrown over a prize: marigold petals mostly, some rose and jasmine, and a few whole marigolds. Most
+// fall behind the card at three depths; one in six falls close by, in front of it, big and out of focus.
+let petalSprites = null;
+function makePetals() {
+  petalSprites = T.makePetalSprites();
+  const css = petalSprites.map((p, k) => `.pk${k}>s{background-image:url(${p.lit})}.pk${k}>s>u{background-image:url(${p.dark})}`).join('');
+  document.head.appendChild(Object.assign(document.createElement('style'), { textContent: css }));
+}
+const PETAL_MIX = [0, 0, 0, 1, 1, 2, 2, 3, 3, 4];      // sprite per draw: marigolds most, then rose and jasmine
 function petals(n) {
-  if (reducedMotion) return;
+  if (reducedMotion || !petalSprites) return;
   const behind = $('petalsB'), front = $('petalsF'), r = Math.random;
   for (let i = 0; i < n; i++) {
-    const el = document.createElement('i'), near = i % 6 === 0, s = near ? 1.6 + r() * 0.4 : 0.75 + r() * 0.5, col = PETAL_COLS[(r() * PETAL_COLS.length) | 0];
-    el.style.cssText = `left:${(r() * 100).toFixed(1)}%;width:${(10 * s).toFixed(1)}px;height:${(14 * s).toFixed(1)}px;background:${col};` +
-      `--d:${(near ? 3 + r() : 4.2 + r() * 2.4).toFixed(2)}s;--w:${(r() * 1.4).toFixed(2)}s;--sw:${((14 + r() * 26) * (r() < 0.5 ? -1 : 1)).toFixed(0)}px;--r:${(r() * 360) | 0}deg`;
+    const near = i % 6 === 0, far = !near && i % 3 === 1, head = i % 11 === 5, k = head ? 5 : PETAL_MIX[(r() * PETAL_MIX.length) | 0], p = petalSprites[k];
+    const s = (near ? 1.9 + r() * 0.5 : far ? 0.55 + r() * 0.2 : 0.85 + r() * 0.35) * (head ? 0.75 : 1);
+    const el = document.createElement('i'); el.className = `pk${k}${near ? ' near' : far ? ' far' : ''}`;
+    // heavier things fall faster; near ones cross the screen faster still
+    const d = (near ? 2.6 + r() * 0.8 : far ? 5.4 + r() * 1.6 : 4 + r() * 1.6) * (head ? 0.75 : 1);
+    const ax = r() * 2 - 1, ay = (r() < 0.5 ? -1 : 1) * (0.4 + r() * 0.6);
+    el.style.cssText = `left:${(r() * 104 - 4).toFixed(1)}%;--d:${d.toFixed(2)}s;--w:${(r() * 1.3).toFixed(2)}s;--sd:${(1 + r() * 0.9).toFixed(2)}s;` +
+      `--sw:${((10 + r() * 30) * s).toFixed(0)}px;--fl:${(12 + r() * 26).toFixed(0)}deg;--sp:${(head ? 2.4 + r() * 1.6 : 0.9 + r() * 1.4).toFixed(2)}s;--ax:${ax.toFixed(2)};--ay:${ay.toFixed(2)}`;
+    const sp = el.appendChild(document.createElement('s'));
+    sp.style.cssText = `width:${(p.w * s).toFixed(1)}px;height:${(p.h * s).toFixed(1)}px`;
+    sp.appendChild(document.createElement('u'));
     (near ? front : behind).appendChild(el);
   }
   after(8.5, clearPetals);
@@ -1168,7 +1206,7 @@ function renderReflections() {
   const W = Math.max(64, Math.round(renderer.domElement.width * q.refl)), H = Math.max(64, Math.round(renderer.domElement.height * q.refl));
   if (!reflRT) reflRT = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType });
   else if (reflRT.width !== W || reflRT.height !== H) reflRT.setSize(W, H);
-  // the camera mirrored in the plane y = 0
+  // the camera mirrored in the street, and in the river, which lies at the same level
   camera.updateMatrixWorld(); _rq.extractRotation(camera.matrixWorld);
   reflCam.position.set(camera.position.x, -camera.position.y, camera.position.z);
   _rt.set(0, 0, -1).applyMatrix4(_rq).add(camera.position); _rt.y = -_rt.y;
@@ -1178,7 +1216,10 @@ function renderReflections() {
   R.uReflMat.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(reflCam.projectionMatrix).multiply(reflCam.matrixWorldInverse);
   const bg = scene.background, a = renderer.getClearAlpha(); renderer.getClearColor(_cc);
   scene.background = null; renderer.setRenderTarget(reflRT); renderer.setClearColor(0x000000, 1); renderer.clear();
+  // sparks and fireworks are sized in screen pixels: scaled down to the target's, or they bloom into blobs
+  const fs = fx.mat.uniforms.uScale, fs0 = fs.value; fs.value *= q.refl;
   renderer.render(scene, reflCam);
+  fs.value = fs0;
   renderer.setRenderTarget(null); renderer.setClearColor(_cc, a); scene.background = bg;
   R.uRefl.value = reflRT.texture; R.uReflOn.value = 1;
 }
@@ -1204,7 +1245,7 @@ if (DEBUG) Object.assign(window.DiyaDash, {
   setQuality(name) { qi = Math.max(0, QUALITY.findIndex(q => q.name === name)); buildComposer(); },
   QUALITY, rebuild() { buildComposer(); },
   passes() { return { bloomPass, gradePass, composer }; }, scene,
-  world() { return { street, pools, washes, player, keyLight, camera, fx, triangle, finale, run }; },
+  world() { return { street, pools, washes, player, keyLight, camera, fx, triangle, finale, run, river, coping, scene }; },
   // dev: render one frame and post it to the local dev server for inspection
   // dev: render a whole run's sound offline (the count-in, a bot's 30 s on the game's own rules with its real
   // catches, misses, firecrackers and On Fire, the finale and the result) and post it as a WAV for measurement

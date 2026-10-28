@@ -80,8 +80,9 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 .score b { font: 800 24px/1 var(--f-body); color: #fff; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
 .score b.bump { animation: bump .28s ease-out; }
 @keyframes bump { 30% { transform: scale(1.3); color: var(--gold); } }
-/* the callouts sit just under the gem (--focus-y, set every frame), where the player is looking */
-.badge { position: absolute; top: calc(var(--focus-y, 60%) + 64px); left: 50%; transform: translateX(-50%); white-space: nowrap; font: 800 24px/1 var(--f-body); color: var(--gold);
+/* The callouts sit in the middle of the screen: between the gem and the diyas coming at it, where the eyes
+   are, above the thumb (which covers the lower third) and below the HUD (which the eyes never visit in play). */
+.badge { position: absolute; top: 46%; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 800 24px/1 var(--f-body); color: var(--gold);
   padding: 10px 20px; border-radius: 999px; background: rgba(10, 8, 24, .78); border: 1.5px solid rgba(255, 207, 90, .7); box-shadow: 0 0 24px rgba(255, 160, 40, .35); opacity: 0; }
 .badge.on { animation: badge 1.3s ease-out forwards; }
 @keyframes badge { 0% { opacity: 0; transform: translateX(-50%) scale(.7); } 15% { opacity: 1; transform: translateX(-50%) scale(1.08); } 30% { transform: translateX(-50%) scale(1); } 78% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) translateY(-12px); } }
@@ -90,7 +91,7 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 .count.pop { animation: pop .75s ease-out forwards; }
 .count.go { font-size: 68px; color: var(--gold); }
 /* On Fire and the final rush: big, hot, over the sky, gone in under a second */
-.count.fire, .count.rush { top: calc(var(--focus-y, 60%) + 22px); font-size: clamp(44px, 14vw, 58px); white-space: nowrap; letter-spacing: .02em; color: #fff3c4; -webkit-text-stroke: 3px rgba(60, 10, 0, .9);
+.count.fire, .count.rush { top: 41%; font-size: clamp(44px, 14vw, 58px); white-space: nowrap; letter-spacing: .02em; color: #fff3c4; -webkit-text-stroke: 3px rgba(60, 10, 0, .9);
   text-shadow: 0 0 18px rgba(255, 120, 20, .95), 0 0 46px rgba(255, 80, 0, .75); }
 .count.rush { color: #fff; text-shadow: 0 0 18px rgba(255, 60, 30, .95), 0 0 46px rgba(255, 40, 0, .75); }
 .count.fire.pop, .count.rush.pop { animation: pop 1s ease-out forwards; }
@@ -127,7 +128,7 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 .pops div.go { animation: rise .75s ease-out forwards; }
 @keyframes rise { 0% { opacity: 0; translate: -50% 0; scale: .6; } 15% { opacity: 1; scale: 1.15; } 30% { scale: 1; } 100% { opacity: 0; translate: -50% -70px; } }
 /* the last five seconds sit over the sky triangle, which is gold by then: white on a dark halo reads on it */
-.count.late { top: 13%; font-size: 92px; color: #fff; -webkit-text-stroke: 4px rgba(20, 10, 30, .9);
+.count.late { top: 37%; font-size: 92px; color: #fff; -webkit-text-stroke: 4px rgba(20, 10, 30, .9);
   text-shadow: 0 0 22px rgba(10, 5, 25, .95), 0 0 6px rgba(10, 5, 25, .9), 0 6px 24px rgba(0, 0, 0, .6); }
 @keyframes pop { 0% { opacity: 0; transform: scale(1.6); } 18% { opacity: 1; transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: scale(.92); } }
 .hint { position: absolute; bottom: calc(env(safe-area-inset-bottom, 0px) + 9%); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; transition: opacity .4s ease; }
@@ -225,13 +226,23 @@ body { font-family: var(--f-body); -webkit-font-smoothing: antialiased; -webkit-
 .newbest { position: absolute; z-index: 2; right: -8px; top: -14px; white-space: nowrap; font: 800 12px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: #2a1200;
   background: linear-gradient(180deg, #fff3c0, var(--gold) 55%, var(--gold-deep)); padding: 7px 11px; border-radius: 999px; transform: rotate(7deg); display: none; box-shadow: 0 4px 16px rgba(255, 160, 40, .6); }
 .newbest.on { display: block; animation: slam .42s cubic-bezier(.2, 1.7, .4, 1); }
-/* petals thrown over a prize: marigold, rose and jasmine, some behind the card and a few close by, in front */
+/* Flowers thrown over a prize: painted marigold, rose and jasmine petals and a few whole marigolds (sprites made
+   at load, see makePetalSprites). Each falls (i), swaying and fluttering, while it tumbles in 3D (s) and darkens
+   as it turns from the light (u). Most fall behind the card, small and far; a few close by, in front, big and
+   out of focus. */
 .petals { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 #petalsF { z-index: 2; }
-.petals i { position: absolute; top: 0; border-radius: 60% 0 60% 60%; box-shadow: inset -2px -2px 4px rgba(60, 0, 0, .3); will-change: transform;
-  animation: fall var(--d) linear var(--w) both, sway calc(var(--d) / 2.5) ease-in-out var(--w) infinite alternate; }
-@keyframes fall { from { transform: translateY(-40px) rotate(var(--r)) rotateX(0); } to { transform: translateY(calc(100vh + 40px)) rotate(calc(var(--r) + 300deg)) rotateX(720deg); } }
-@keyframes sway { from { translate: calc(var(--sw) * -1) 0; } to { translate: var(--sw) 0; } }
+.petals i { position: absolute; top: -110px; will-change: transform;
+  animation: fall var(--d) linear var(--w) both, sway var(--sd) ease-in-out var(--w) infinite alternate; }
+.petals i.near { filter: blur(1.7px); }
+.petals i.far { opacity: .8; }
+.petals s, .petals u { display: block; background: center / contain no-repeat; }
+.petals s { position: relative; animation: spin var(--sp) linear var(--w) infinite; }
+.petals u { position: absolute; inset: 0; animation: turn var(--sp) linear var(--w) infinite; }
+@keyframes fall { from { transform: translateY(0); } to { transform: translateY(calc(100vh + 220px)); } }
+@keyframes sway { from { translate: calc(var(--sw) * -1) 0; rotate: calc(var(--fl) * -1); } to { translate: var(--sw) 0; rotate: var(--fl); } }
+@keyframes spin { from { transform: perspective(260px) rotate3d(var(--ax), var(--ay), .3, 0deg); } to { transform: perspective(260px) rotate3d(var(--ax), var(--ay), .3, 360deg); } }
+@keyframes turn { 0%, 100% { opacity: 0; } 25%, 75% { opacity: .8; } 50% { opacity: .6; } }
 /* for the promoter: a quiet strip that arrives once the prize is showing */
 .res-actions { width: 100%; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
   opacity: 0; transform: translateY(14px); transition: opacity .5s ease 1s, transform .6s cubic-bezier(.2, .9, .3, 1) 1s; }
